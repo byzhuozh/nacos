@@ -215,14 +215,17 @@ public class LongPollingService extends AbstractEventListener {
         /**
          * 提前500ms返回响应，为避免客户端超时 @qiaoyi.dingqy 2013.10.22改动  add delay time for LoadBalance
          */
+        // 为了避免客户端请求超时，将客户端传递过来的超时时间缩短一定时间，默认500ms，保证能在客户端请求超时前进行返回
         long timeout = Math.max(10000, Long.parseLong(str) - delayTime);
-        if (isFixedPolling()) {
+        if (isFixedPolling()) {     // 如果是固定的长轮询请求，则仅仅重新设置超时时间，不做其他操作
             timeout = Math.max(10000, getFixedPollingInterval());
             // do nothing but set fix polling timeout
         } else {
             long start = System.currentTimeMillis();
+            // 找到需要更新的配置的key的列表
             List<String> changedGroups = MD5Util.compareMd5(req, rsp, clientMd5Map);
             if (changedGroups.size() > 0) {
+                // 通过该方法直接返回数据，结束长轮询
                 generateResponse(req, rsp, changedGroups);
                 LogUtil.clientLog.info("{}|{}|{}|{}|{}|{}|{}",
                     System.currentTimeMillis() - start, "instant", RequestUtil.getRemoteIp(req), "polling",
@@ -241,6 +244,7 @@ public class LongPollingService extends AbstractEventListener {
         // AsyncContext.setTimeout()的超时时间不准，所以只能自己控制
         asyncContext.setTimeout(0L);
 
+        // 开启一个长轮询线程
         scheduler.execute(
             new ClientLongPolling(asyncContext, clientMd5Map, ip, probeRequestSize, timeout, appName, tag));
     }

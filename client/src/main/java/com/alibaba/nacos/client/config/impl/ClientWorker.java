@@ -274,9 +274,11 @@ public class ClientWorker {
         final String dataId = cacheData.dataId;
         final String group = cacheData.group;
         final String tenant = cacheData.tenant;
+        // 获得本地文件的路径
         File path = LocalConfigInfoProcessor.getFailoverFile(agent.getName(), dataId, group, tenant);
 
         // 没有 -> 有
+        // 如果不使用本地配置，且本地配置文件路径存在，则设置该配置数据为使用本地配置
         if (!cacheData.isUseLocalConfigInfo() && path.exists()) {
             String content = LocalConfigInfoProcessor.getFailover(agent.getName(), dataId, group, tenant);
             String md5 = MD5.getInstance().getMD5String(content);
@@ -290,6 +292,7 @@ public class ClientWorker {
         }
 
         // 有 -> 没有。不通知业务监听器，从server拿到配置后通知。
+        // 如果使用本地配置，但是本地路径不存在，则不会触发业务监听，也不会从服务端触发通知，并且设置不使用本地配置
         if (cacheData.isUseLocalConfigInfo() && !path.exists()) {
             cacheData.setUseLocalConfigInfo(false);
             LOGGER.warn("[{}] [failover-change] failover file deleted. dataId={}, group={}, tenant={}", agent.getName(),
@@ -298,6 +301,7 @@ public class ClientWorker {
         }
 
         // 有变更
+        // 当使用本地配置，且本地文件存在，但是当前内存中的版本和本地文件的版本不一致时，会进入判断
         if (cacheData.isUseLocalConfigInfo() && path.exists()
             && cacheData.getLocalConfigInfoVersion() != path.lastModified()) {
             String content = LocalConfigInfoProcessor.getFailover(agent.getName(), dataId, group, tenant);
@@ -318,10 +322,12 @@ public class ClientWorker {
         // 分任务
         int listenerSize = cacheMap.get().size();
         // 向上取整为批数
+        // Round up the longingTaskCount. 向上取整，保证所有的配置都会检查到 ParamUtil.getPerTaskConfigSize()默认为 3000
         int longingTaskCount = (int) Math.ceil(listenerSize / ParamUtil.getPerTaskConfigSize());
         if (longingTaskCount > currentLongingTaskCount) {
             for (int i = (int) currentLongingTaskCount; i < longingTaskCount; i++) {
                 // 要判断任务是否在执行 这块需要好好想想。 任务列表现在是无序的。变化过程可能有问题
+                // 通过初始化的时候创建的线程池来执行长轮询任务
                 executorService.execute(new LongPollingRunnable(i));
             }
             currentLongingTaskCount = longingTaskCount;
@@ -333,6 +339,7 @@ public class ClientWorker {
      */
     List<String> checkUpdateDataIds(List<CacheData> cacheDatas, List<String> inInitializingCacheList) throws IOException {
         StringBuilder sb = new StringBuilder();
+        // 这里遍历该分片下的所有配置，然后把所有不使用本地配置的配置拼接成string
         for (CacheData cacheData : cacheDatas) {
             if (!cacheData.isUseLocalConfigInfo()) {
                 sb.append(cacheData.dataId).append(WORD_SEPARATOR);
@@ -351,6 +358,7 @@ public class ClientWorker {
             }
         }
         boolean isInitializingCacheList = !inInitializingCacheList.isEmpty();
+        // 这里的sb表示该分片下的不使用本地的配置的拼接串
         return checkUpdateConfigStr(sb.toString(), isInitializingCacheList);
     }
 
@@ -379,14 +387,17 @@ public class ClientWorker {
             // In order to prevent the server from handling the delay of the client's long task,
             // increase the client's read timeout to avoid this problem.
 
+            // 发起长轮询请求
             long readTimeoutMs = timeout + (long) Math.round(timeout >> 1);
             HttpResult result = agent.httpPost(Constants.CONFIG_CONTROLLER_PATH + "/listener", headers, params,
                 agent.getEncode(), readTimeoutMs);
 
             if (HttpURLConnection.HTTP_OK == result.code) {
+                // 设置远程服务为健康状态，并解析返回信息
                 setHealthServer(true);
                 return parseUpdateDataIdResponse(result.content);
             } else {
+                // 如果返回异常，则设置服务为非健康状态
                 setHealthServer(false);
                 LOGGER.error("[{}] [check-update] get changed dataId error, code: {}", agent.getName(), result.code);
             }
@@ -444,6 +455,7 @@ public class ClientWorker {
 
         init(properties);
 
+        // 初始化一个客户端工作线程池
         executor = Executors.newScheduledThreadPool(1, new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
@@ -454,6 +466,7 @@ public class ClientWorker {
             }
         });
 
+        // 初始化用于长轮询的线程池
         executorService = Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors(), new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
@@ -464,10 +477,12 @@ public class ClientWorker {
             }
         });
 
+        // 延后10ms执行检查配置的任务
         executor.scheduleWithFixedDelay(new Runnable() {
             @Override
             public void run() {
                 try {
+                    // 检查配置信息
                     checkConfigInfo();
                 } catch (Throwable e) {
                     LOGGER.error("[" + agent.getName() + "] [sub-check] rotate check error", e);
@@ -486,9 +501,13 @@ public class ClientWorker {
         enableRemoteSyncConfig = Boolean.parseBoolean(properties.getProperty(PropertyKeyConst.ENABLE_REMOTE_SYNC_CONFIG));
     }
 
+    /**
+     * 长轮询线程
+     */
     class LongPollingRunnable implements Runnable {
         private int taskId;
 
+        // 通过taskId，可以找到该线程对应的需要检查的那部分配置分片
         public LongPollingRunnable(int taskId) {
             this.taskId = taskId;
         }
@@ -500,12 +519,16 @@ public class ClientWorker {
             List<String> inInitializingCacheList = new ArrayList<String>();
             try {
                 // check failover config
+                // 这里的cacheMap中的数据是存在内存缓存中的，不是本地的。
                 for (CacheData cacheData : cacheMap.get().values()) {
+                    // 只负责处理自己分片的配置
                     if (cacheData.getTaskId() == taskId) {
                         cacheDatas.add(cacheData);
                         try {
+                            // 检查本地的配置，并设置cacheData.isUseLocalConfigInfo()属性
                             checkLocalConfig(cacheData);
                             if (cacheData.isUseLocalConfigInfo()) {
+                                // 如果成立，会触发监听，比较md5
                                 cacheData.checkListenerMd5();
                             }
                         } catch (Exception e) {
@@ -514,9 +537,11 @@ public class ClientWorker {
                     }
                 }
 
-                // check server config
+                // check server config 检查当前分片下的配置在服务端是否发生变化
+                // 从服务端获取发生了变化的配置的key（chengedGroupKeys表示服务端告诉客户端，哪些配置发生了变化）
                 List<String> changedGroupKeys = checkUpdateDataIds(cacheDatas, inInitializingCacheList);
 
+                // 遍历发生了变化的key，并根据key去服务端请求最新配置，并更新到内存缓存中
                 for (String groupKey : changedGroupKeys) {
                     String[] key = GroupKey.parseKey(groupKey);
                     String dataId = key[0];
@@ -526,6 +551,7 @@ public class ClientWorker {
                         tenant = key[2];
                     }
                     try {
+                        // 从远程服务端获取最新的配置，并缓存到内存中
                         String[] ct = getServerConfig(dataId, group, tenant, 3000L);
                         CacheData cache = cacheMap.get().get(GroupKey.getKeyTenant(dataId, group, tenant));
                         cache.setContent(ct[0]);
@@ -551,12 +577,14 @@ public class ClientWorker {
                 }
                 inInitializingCacheList.clear();
 
+                // 继续执行该任务
                 executorService.execute(this);
 
             } catch (Throwable e) {
 
                 // If the rotation training task is abnormal, the next execution time of the task will be punished
                 LOGGER.error("longPolling error : ", e);
+                // 如果任务出现异常，那么下次的执行时间就要加长，类似衰减重试
                 executorService.schedule(this, taskPenaltyTime, TimeUnit.MILLISECONDS);
             }
         }

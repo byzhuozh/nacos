@@ -70,12 +70,15 @@ public class ConfigServletInner {
         throws IOException {
 
         // 长轮询
+        // 根据请求头里是否有Long-Pulling-Timeout判断是否是长轮询请求
         if (LongPollingService.isSupportLongPolling(request)) {
+            // 支持长轮询的情况下，需要阻塞请求的返回
             longPollingService.addLongPollingClient(request, response, clientMd5Map, probeRequestSize);
             return HttpServletResponse.SC_OK + "";
         }
 
         // else 兼容短轮询逻辑
+        // 兼容短轮询的逻辑，遍历配置的md5，返回发生了变化的配置的key
         List<String> changedGroups = MD5Util.compareMd5(request, response, clientMd5Map);
 
         // 兼容短轮询result

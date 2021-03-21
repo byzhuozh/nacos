@@ -271,12 +271,15 @@ public class ConfigController {
 
     /**
      * 比较MD5
+     *
+     * 服务端提供配置修改监听的请求入口
      */
     @PostMapping("/listener")
     @Secured(action = ActionTypes.READ, parser = ConfigResourceParser.class)
     public void listener(HttpServletRequest request, HttpServletResponse response)
         throws ServletException, IOException {
         request.setAttribute("org.apache.catalina.ASYNC_SUPPORTED", true);
+        // 这个就是客户端发送过来需要监听的可能会修改的配置的串
         String probeModify = request.getParameter("Listening-Configs");
         if (StringUtils.isBlank(probeModify)) {
             throw new IllegalArgumentException("invalid probeModify");
@@ -286,6 +289,7 @@ public class ConfigController {
 
         Map<String, String> clientMd5Map;
         try {
+            // 客户端会传递多个dataId
             clientMd5Map = MD5Util.getClientMd5Map(probeModify);
         } catch (Throwable e) {
             throw new IllegalArgumentException("invalid probeModify");

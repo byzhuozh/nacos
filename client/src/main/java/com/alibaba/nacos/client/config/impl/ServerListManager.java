@@ -213,8 +213,10 @@ public class ServerListManager {
             return;
         }
 
+        // runnable接口，维护serverUrlList
         GetServerListTask getServersTask = new GetServerListTask(addressServerUrl);
         for (int i = 0; i < initServerlistRetryTimes && serverUrls.isEmpty(); ++i) {
+            // 判断服务列表是否发生改变，如果发生改变，则更新服务列表
             getServersTask.run();
             try {
                 this.wait((i + 1) * 100L);
@@ -230,6 +232,7 @@ public class ServerListManager {
                 "fail to get NACOS-server serverlist! env:" + name + ", not connnect url:" + addressServerUrl);
         }
 
+        // 将自己在丢到定时任务里面执行，执行时间为30秒一次
         TimerService.scheduleWithFixedDelay(getServersTask, 0L, 30L, TimeUnit.SECONDS);
         isStarted = true;
     }

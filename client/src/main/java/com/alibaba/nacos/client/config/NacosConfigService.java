@@ -77,8 +77,14 @@ public class NacosConfigService implements ConfigService {
             encode = encodeTmp.trim();
         }
         initNamespace(properties);
+
+        //这里创建代理连接服务器
         agent = new MetricsHttpAgent(new ServerHttpAgent(properties));
+        //这个其实是针对endpoint设置才会起作用，这里简单说一下；
+        //线程异步的通过nameServer命名服务获取serverList
         agent.start();
+
+        //初始化一个客户端工作类
         worker = new ClientWorker(agent, configFilterChainManager, properties);
     }
 
