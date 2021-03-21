@@ -13,46 +13,73 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.nacos.client.config.impl;
 
 import com.alibaba.nacos.api.config.ConfigChangeItem;
-import com.alibaba.nacos.client.utils.StringUtils;
+import com.alibaba.nacos.api.exception.NacosException;
+import com.alibaba.nacos.api.exception.runtime.NacosRuntimeException;
+import com.alibaba.nacos.common.utils.StringUtils;
 import org.yaml.snakeyaml.Yaml;
-import java.util.*;
+import org.yaml.snakeyaml.constructor.ConstructorException;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
- * YmlChangeParser
+ * YmlChangeParser.
  *
  * @author rushsky518
  */
 public class YmlChangeParser extends AbstractConfigChangeParser {
+    
+    private static final String INVALID_CONSTRUCTOR_ERROR_INFO = "could not determine a constructor for the tag";
+    
     public YmlChangeParser() {
         super("yaml");
     }
-
+    
     @Override
     public Map<String, ConfigChangeItem> doParse(String oldContent, String newContent, String type) {
         Map<String, Object> oldMap = Collections.emptyMap();
         Map<String, Object> newMap = Collections.emptyMap();
-
-        if (StringUtils.isNotBlank(oldContent)) {
-            oldMap = (new Yaml()).load(oldContent);
-            oldMap = getFlattenedMap(oldMap);
+        try {
+            Yaml yaml = new Yaml(new SafeConstructor());
+            if (StringUtils.isNotBlank(oldContent)) {
+                oldMap = yaml.load(oldContent);
+                oldMap = getFlattenedMap(oldMap);
+            }
+            if (StringUtils.isNotBlank(newContent)) {
+                newMap = yaml.load(newContent);
+                newMap = getFlattenedMap(newMap);
+            }
+        } catch (ConstructorException e) {
+            handleYamlException(e);
         }
-        if (StringUtils.isNotBlank(newContent)) {
-            newMap = (new Yaml()).load(newContent);
-            newMap = getFlattenedMap(newMap);
-        }
-
+        
         return filterChangeData(oldMap, newMap);
     }
-
-    private final Map<String, Object> getFlattenedMap(Map<String, Object> source) {
+    
+    private void handleYamlException(ConstructorException e) {
+        if (e.getMessage().startsWith(INVALID_CONSTRUCTOR_ERROR_INFO)) {
+            throw new NacosRuntimeException(NacosException.INVALID_PARAM,
+                    "AbstractConfigChangeListener only support basic java data type for yaml. If you want to listen "
+                            + "key changes for custom classes, please use `Listener` to listener whole yaml configuration and parse it by yourself.",
+                    e);
+        }
+        throw e;
+    }
+    
+    private Map<String, Object> getFlattenedMap(Map<String, Object> source) {
         Map<String, Object> result = new LinkedHashMap<String, Object>(128);
         buildFlattenedMap(result, source, null);
         return result;
     }
-
+    
     private void buildFlattenedMap(Map<String, Object> result, Map<String, Object> source, String path) {
         for (Iterator<Map.Entry<String, Object>> itr = source.entrySet().iterator(); itr.hasNext(); ) {
             Map.Entry<String, Object> e = itr.next();
@@ -67,12 +94,10 @@ public class YmlChangeParser extends AbstractConfigChangeParser {
             if (e.getValue() instanceof String) {
                 result.put(key, e.getValue());
             } else if (e.getValue() instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> map = (Map<String, Object>) e.getValue();
+                @SuppressWarnings("unchecked") Map<String, Object> map = (Map<String, Object>) e.getValue();
                 buildFlattenedMap(result, map, key);
             } else if (e.getValue() instanceof Collection) {
-                @SuppressWarnings("unchecked")
-                Collection<Object> collection = (Collection<Object>) e.getValue();
+                @SuppressWarnings("unchecked") Collection<Object> collection = (Collection<Object>) e.getValue();
                 if (collection.isEmpty()) {
                     result.put(key, "");
                 } else {
@@ -86,5 +111,5 @@ public class YmlChangeParser extends AbstractConfigChangeParser {
             }
         }
     }
-
+    
 }

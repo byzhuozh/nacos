@@ -13,98 +13,127 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.nacos.core.auth;
 
+import com.alibaba.nacos.auth.AuthManager;
+import com.alibaba.nacos.auth.annotation.Secured;
+import com.alibaba.nacos.auth.common.AuthConfigs;
+import com.alibaba.nacos.auth.exception.AccessException;
+import com.alibaba.nacos.auth.model.Permission;
+import com.alibaba.nacos.auth.parser.ResourceParser;
+import com.alibaba.nacos.common.utils.ExceptionUtil;
 import com.alibaba.nacos.core.code.ControllerMethodsCache;
-import com.alibaba.nacos.core.utils.Constants;
-import com.alibaba.nacos.core.utils.ExceptionUtil;
 import com.alibaba.nacos.core.utils.Loggers;
 import com.alibaba.nacos.core.utils.WebUtils;
+import com.alibaba.nacos.sys.env.Constants;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import javax.servlet.*;
+import javax.servlet.Filter;
+import javax.servlet.FilterChain;
+import javax.servlet.ServletException;
+import javax.servlet.ServletRequest;
+import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.lang.reflect.Method;
-import java.net.URI;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Unified filter to handle authentication and authorization
+ * Unified filter to handle authentication and authorization.
  *
  * @author nkorange
  * @since 1.2.0
  */
 public class AuthFilter implements Filter {
-
+    
     @Autowired
     private AuthConfigs authConfigs;
-
+    
     @Autowired
     private AuthManager authManager;
-
+    
     @Autowired
     private ControllerMethodsCache methodsCache;
-
+    
+    private Map<Class<? extends ResourceParser>, ResourceParser> parserInstance = new ConcurrentHashMap<>();
+    
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
-        throws IOException, ServletException {
-
+            throws IOException, ServletException {
+        
         if (!authConfigs.isAuthEnabled()) {
             chain.doFilter(request, response);
             return;
         }
-
+        
         HttpServletRequest req = (HttpServletRequest) request;
         HttpServletResponse resp = (HttpServletResponse) response;
-
-        String userAgent = WebUtils.getUserAgent(req);
-
-        if (StringUtils.startsWith(userAgent, Constants.NACOS_SERVER_HEADER)) {
-            chain.doFilter(req, resp);
+        
+        if (authConfigs.isEnableUserAgentAuthWhite()) {
+            String userAgent = WebUtils.getUserAgent(req);
+            if (StringUtils.startsWith(userAgent, Constants.NACOS_SERVER_HEADER)) {
+                chain.doFilter(request, response);
+                return;
+            }
+        } else if (StringUtils.isNotBlank(authConfigs.getServerIdentityKey()) && StringUtils
+                .isNotBlank(authConfigs.getServerIdentityValue())) {
+            String serverIdentity = req.getHeader(authConfigs.getServerIdentityKey());
+            if (authConfigs.getServerIdentityValue().equals(serverIdentity)) {
+                chain.doFilter(request, response);
+                return;
+            }
+            Loggers.AUTH.warn("Invalid server identity value for {} from {}", authConfigs.getServerIdentityKey(),
+                    req.getRemoteHost());
+        } else {
+            resp.sendError(HttpServletResponse.SC_FORBIDDEN,
+                    "Invalid server identity key or value, Please make sure set `nacos.core.auth.server.identity.key`"
+                            + " and `nacos.core.auth.server.identity.value`, or open `nacos.core.auth.enable.userAgentAuthWhite`");
             return;
         }
-
-        if (Loggers.AUTH.isDebugEnabled()) {
-            Loggers.AUTH.debug("auth filter start, request: {}", req.getRequestURI());
-        }
-
+        
         try {
-
-            String path = new URI(req.getRequestURI()).getPath();
-            Method method = methodsCache.getMethod(req.getMethod(), path);
-
+            
+            Method method = methodsCache.getMethod(req);
+            
             if (method == null) {
-                throw new NoSuchMethodException();
+                chain.doFilter(request, response);
+                return;
             }
-
+            
             if (method.isAnnotationPresent(Secured.class) && authConfigs.isAuthEnabled()) {
-
+                
+                if (Loggers.AUTH.isDebugEnabled()) {
+                    Loggers.AUTH.debug("auth start, request: {} {}", req.getMethod(), req.getRequestURI());
+                }
+                
                 Secured secured = method.getAnnotation(Secured.class);
                 String action = secured.action().toString();
                 String resource = secured.resource();
-
+                
                 if (StringUtils.isBlank(resource)) {
-                    ResourceParser parser = secured.parser().newInstance();
+                    ResourceParser parser = getResourceParser(secured.parser());
                     resource = parser.parseName(req);
                 }
-
+                
                 if (StringUtils.isBlank(resource)) {
                     // deny if we don't find any resource:
                     throw new AccessException("resource name invalid!");
                 }
-
+                
                 authManager.auth(new Permission(resource, action), authManager.login(req));
-
+                
             }
-
+            chain.doFilter(request, response);
         } catch (AccessException e) {
+            if (Loggers.AUTH.isDebugEnabled()) {
+                Loggers.AUTH.debug("access denied, request: {} {}, reason: {}", req.getMethod(), req.getRequestURI(),
+                        e.getErrMsg());
+            }
             resp.sendError(HttpServletResponse.SC_FORBIDDEN, e.getErrMsg());
-            return;
-        } catch (NoSuchMethodException e) {
-            resp.sendError(HttpServletResponse.SC_NOT_IMPLEMENTED,
-                "no such api:" + req.getMethod() + ":" + req.getRequestURI());
             return;
         } catch (IllegalArgumentException e) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, ExceptionUtil.getAllExceptionMsg(e));
@@ -113,7 +142,15 @@ public class AuthFilter implements Filter {
             resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Server failed," + e.getMessage());
             return;
         }
-
-        chain.doFilter(request, response);
+    }
+    
+    private ResourceParser getResourceParser(Class<? extends ResourceParser> parseClass)
+            throws IllegalAccessException, InstantiationException {
+        ResourceParser parser = parserInstance.get(parseClass);
+        if (parser == null) {
+            parser = parseClass.newInstance();
+            parserInstance.put(parseClass, parser);
+        }
+        return parser;
     }
 }

@@ -13,52 +13,47 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.nacos.config.server.auth;
 
-import com.alibaba.nacos.api.common.Constants;
-import com.alibaba.nacos.core.auth.Resource;
-import com.alibaba.nacos.core.auth.ResourceParser;
-import org.apache.commons.lang3.StringUtils;
+package com.alibaba.nacos.config.server.auth;
 
 import javax.servlet.http.HttpServletRequest;
 
+import com.alibaba.nacos.auth.model.Resource;
+import com.alibaba.nacos.auth.parser.ResourceParser;
+import com.alibaba.nacos.common.utils.NamespaceUtil;
+import org.apache.commons.lang3.StringUtils;
+
 /**
- * Config resource parser
+ * Config resource parser.
  *
  * @author nkorange
  * @since 1.2.0
  */
 public class ConfigResourceParser implements ResourceParser {
-
+    
     private static final String AUTH_CONFIG_PREFIX = "config/";
-
+    
     @Override
     public String parseName(Object request) {
         HttpServletRequest req = (HttpServletRequest) request;
-        String namespaceId = req.getParameter("tenant");
+        String namespaceId = NamespaceUtil.processNamespaceParameter(req.getParameter("tenant"));
         String groupName = req.getParameter("group");
         String dataId = req.getParameter("dataId");
-
-        if (StringUtils.isBlank(namespaceId)) {
-            namespaceId = Constants.DEFAULT_NAMESPACE_ID;
-        }
-
+        
         StringBuilder sb = new StringBuilder();
-
-        sb.append(namespaceId).append(Resource.SPLITTER);
-
-        if (StringUtils.isBlank(dataId)) {
-            sb.append("*")
-                .append(Resource.SPLITTER)
-                .append(AUTH_CONFIG_PREFIX)
-                .append("*");
-        } else {
-            sb.append(groupName)
-                .append(Resource.SPLITTER)
-                .append(AUTH_CONFIG_PREFIX)
-                .append(dataId);
+        
+        if (StringUtils.isNotBlank(namespaceId)) {
+            sb.append(namespaceId);
         }
-
+        
+        sb.append(Resource.SPLITTER);
+        
+        if (StringUtils.isBlank(dataId)) {
+            sb.append("*").append(Resource.SPLITTER).append(AUTH_CONFIG_PREFIX).append("*");
+        } else {
+            sb.append(groupName).append(Resource.SPLITTER).append(AUTH_CONFIG_PREFIX).append(dataId);
+        }
+        
         return sb.toString();
     }
 }
