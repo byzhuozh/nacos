@@ -252,7 +252,7 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
     }
 
     public void init() {
-
+        //建立心跳检测任务clientBeatCheckTask，默认五秒
         HealthCheckReactor.scheduleCheck(clientBeatCheckTask);
 
         for (Map.Entry<String, Cluster> entry : clusterMap.entrySet()) {

@@ -56,10 +56,12 @@ public class NacosNamingService implements NamingService {
     /**
      * Each Naming service should have different namespace.
      */
+    //注册中心对应的 namespace
     private String namespace;
 
     private String endpoint;
 
+    //注册中心地址
     private String serverList;
 
     private String cacheDir;
@@ -86,15 +88,26 @@ public class NacosNamingService implements NamingService {
     }
 
     private void init(Properties properties) {
+        //获取 namespace
         namespace = InitUtils.initNamespaceForNaming(properties);
+
+        //加载 serverList
         initServerAddr(properties);
         InitUtils.initWebRootContext();
+
+        //初始化缓存地址
         initCacheDir();
         initLogName(properties);
 
+        //事件分发器
         eventDispatcher = new EventDispatcher();
+
+        //控制台服务通信代理
         serverProxy = new NamingProxy(namespace, endpoint, serverList, properties);
+        //心跳
         beatReactor = new BeatReactor(serverProxy, initClientBeatThreadCount(properties));
+
+        // 维护本地订阅的服务注册表信息
         hostReactor = new HostReactor(eventDispatcher, serverProxy, cacheDir, isLoadCacheAtStart(properties),
             initPollingThreadCount(properties));
     }
@@ -172,13 +185,14 @@ public class NacosNamingService implements NamingService {
 
     @Override
     public void registerInstance(String serviceName, String groupName, String ip, int port, String clusterName) throws NacosException {
-
+        //服务注册实例
         Instance instance = new Instance();
         instance.setIp(ip);
         instance.setPort(port);
         instance.setWeight(1.0);
         instance.setClusterName(clusterName);
 
+        //注册
         registerInstance(serviceName, groupName, instance);
     }
 
@@ -189,7 +203,7 @@ public class NacosNamingService implements NamingService {
 
     @Override
     public void registerInstance(String serviceName, String groupName, Instance instance) throws NacosException {
-
+        //服务是临时注册的, 默认 true
         if (instance.isEphemeral()) {
             BeatInfo beatInfo = new BeatInfo();
             beatInfo.setServiceName(NamingUtils.getGroupedName(serviceName, groupName));
@@ -199,11 +213,14 @@ public class NacosNamingService implements NamingService {
             beatInfo.setWeight(instance.getWeight());
             beatInfo.setMetadata(instance.getMetadata());
             beatInfo.setScheduled(false);
+            //心跳间隔 5s
             beatInfo.setPeriod(instance.getInstanceHeartBeatInterval());
 
+            //添加心跳检测
             beatReactor.addBeatInfo(NamingUtils.getGroupedName(serviceName, groupName), beatInfo);
         }
 
+        //向注册中心注册服务
         serverProxy.registerService(NamingUtils.getGroupedName(serviceName, groupName), groupName, instance);
     }
 

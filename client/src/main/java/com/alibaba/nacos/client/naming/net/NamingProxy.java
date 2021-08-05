@@ -61,14 +61,18 @@ public class NamingProxy {
 
     private static final int DEFAULT_SERVER_PORT = 8848;
 
+    //控制台的端口，默认8848
     private int serverPort = DEFAULT_SERVER_PORT;
 
+    //控制台的 nameSpace
     private String namespaceId;
 
     private String endpoint;
 
+    //控制台的域名
     private String nacosDomain;
 
+    //控制台的域名
     private List<String> serverList;
 
     private List<String> serversFromEndpoint = new ArrayList<String>();
@@ -87,6 +91,7 @@ public class NamingProxy {
 
         securityProxy = new SecurityProxy(properties);
         this.properties = properties;
+        //默认通信端口 8848（控制台的端口）
         this.setServerPort(DEFAULT_SERVER_PORT);
         this.namespaceId = namespaceId;
         this.endpoint = endpoint;
@@ -206,6 +211,7 @@ public class NamingProxy {
         params.put("ephemeral", String.valueOf(instance.isEphemeral()));
         params.put("metadata", JSON.toJSONString(instance.getMetadata()));
 
+        //向控制台发送注册指令
         reqAPI(UtilAndComs.NACOS_URL_INSTANCE, params, HttpMethod.POST);
 
     }
@@ -452,6 +458,7 @@ public class NamingProxy {
 
         if (servers != null && !servers.isEmpty()) {
 
+            //随机找到一个注册中心地址
             Random random = new Random(System.currentTimeMillis());
             int index = random.nextInt(servers.size());
 
@@ -465,6 +472,7 @@ public class NamingProxy {
                         NAMING_LOGGER.debug("request {} failed.", server, e);
                     }
                 }
+                // 如果服务异常，则向下索引，找到下一个注册中心地址
                 index = (index + 1) % servers.size();
             }
         }

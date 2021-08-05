@@ -43,6 +43,7 @@ public class BeatReactor {
 
     private boolean lightBeatEnabled = false;
 
+    //key: 服务名    val:服务心跳信息
     public final Map<String, BeatInfo> dom2Beat = new ConcurrentHashMap<String, BeatInfo>();
 
     public BeatReactor(NamingProxy serverProxy) {
@@ -70,8 +71,12 @@ public class BeatReactor {
         if ((existBeat = dom2Beat.remove(key)) != null) {
             existBeat.setStopped(true);
         }
+        //缓存服务的心跳信息
         dom2Beat.put(key, beatInfo);
+
+        //每隔 5s 做一次心跳检测
         executorService.schedule(new BeatTask(beatInfo), beatInfo.getPeriod(), TimeUnit.MILLISECONDS);
+
         MetricsMonitor.getDom2BeatSizeMonitor().set(dom2Beat.size());
     }
 
@@ -105,20 +110,28 @@ public class BeatReactor {
             }
             long nextTime = beatInfo.getPeriod();
             try {
+                // 发送心跳检测
                 JSONObject result = serverProxy.sendBeat(beatInfo, BeatReactor.this.lightBeatEnabled);
+
+                //获取注册中心返回的心跳检测
                 long interval = result.getIntValue("clientBeatInterval");
                 boolean lightBeatEnabled = false;
+
                 if (result.containsKey(CommonParams.LIGHT_BEAT_ENABLED)) {
                     lightBeatEnabled = result.getBooleanValue(CommonParams.LIGHT_BEAT_ENABLED);
                 }
+
                 BeatReactor.this.lightBeatEnabled = lightBeatEnabled;
                 if (interval > 0) {
                     nextTime = interval;
                 }
+
                 int code = NamingResponseCode.OK;
                 if (result.containsKey(CommonParams.CODE)) {
                     code = result.getIntValue(CommonParams.CODE);
                 }
+
+                //心跳响应码：资源未发现 (即未发现注册的服务)，则发起注册
                 if (code == NamingResponseCode.RESOURCE_NOT_FOUND) {
                     Instance instance = new Instance();
                     instance.setPort(beatInfo.getPort());
@@ -130,6 +143,7 @@ public class BeatReactor {
                     instance.setInstanceId(instance.getInstanceId());
                     instance.setEphemeral(true);
                     try {
+                        //服务注册
                         serverProxy.registerService(beatInfo.getServiceName(),
                             NamingUtils.getGroupName(beatInfo.getServiceName()), instance);
                     } catch (Exception ignore) {
@@ -140,6 +154,7 @@ public class BeatReactor {
                     JSON.toJSONString(beatInfo), ne.getErrCode(), ne.getErrMsg());
 
             }
+            // 发起心跳检测
             executorService.schedule(new BeatTask(beatInfo), nextTime, TimeUnit.MILLISECONDS);
         }
     }

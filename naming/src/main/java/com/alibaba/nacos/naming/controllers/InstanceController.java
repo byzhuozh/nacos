@@ -95,9 +95,12 @@ public class InstanceController {
     @Secured(parser = NamingResourceParser.class, action = ActionTypes.WRITE)
     public String register(HttpServletRequest request) throws Exception {
 
+        //注册的服务名
         String serviceName = WebUtils.required(request, CommonParams.SERVICE_NAME);
+        //服务的命令空间
         String namespaceId = WebUtils.optional(request, CommonParams.NAMESPACE_ID, Constants.DEFAULT_NAMESPACE_ID);
 
+        // parseInstance(request) 生成注册实例
         serviceManager.registerInstance(namespaceId, serviceName, parseInstance(request));
         return "ok";
     }
@@ -368,17 +371,23 @@ public class InstanceController {
         String app = WebUtils.optional(request, "app", "DEFAULT");
         String metadata = WebUtils.optional(request, "metadata", StringUtils.EMPTY);
 
+        //获取注册的实例
         Instance instance = getIPAddress(request);
         instance.setApp(app);
         instance.setServiceName(serviceName);
-        // Generate simple instance id first. This value would be updated according to
-        // INSTANCE_ID_GENERATOR.
+
+        // Generate simple instance id first. This value would be updated according to INSTANCE_ID_GENERATOR.
+        // 生成服务实例ID： ip#port#cluster_name#serviceName
         instance.setInstanceId(instance.generateInstanceId());
+
         instance.setLastBeat(System.currentTimeMillis());
+
+        //填充元数据
         if (StringUtils.isNotEmpty(metadata)) {
             instance.setMetadata(UtilsAndCommons.parseMetadata(metadata));
         }
 
+        //校验注册的服务(IP合法性)
         instance.validate();
 
         return instance;

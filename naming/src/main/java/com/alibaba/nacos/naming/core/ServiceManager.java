@@ -431,23 +431,31 @@ public class ServiceManager implements RecordListener<Service> {
 
     public void createServiceIfAbsent(String namespaceId, String serviceName, boolean local, Cluster cluster) throws NacosException {
         Service service = getService(namespaceId, serviceName);
+        // 如果服务不存在，创建一个空的服务
         if (service == null) {
 
             Loggers.SRV_LOG.info("creating empty service {}:{}", namespaceId, serviceName);
+
+            // 构建注册的服务
             service = new Service();
             service.setName(serviceName);
             service.setNamespaceId(namespaceId);
             service.setGroupName(NamingUtils.getGroupName(serviceName));
             // now validate the service. if failed, exception will be thrown
             service.setLastModifiedMillis(System.currentTimeMillis());
+            // 根据 IP 生成 MD5
             service.recalculateChecksum();
             if (cluster != null) {
                 cluster.setService(service);
                 service.getClusterMap().put(cluster.getName(), cluster);
             }
+
+            //服务命名规则校验
             service.validate();
 
+            // 将创建的空的服务添加进本地缓存，并初始化
             putServiceAndInit(service);
+
             if (!local) {
                 addOrReplaceService(service);
             }
@@ -465,9 +473,10 @@ public class ServiceManager implements RecordListener<Service> {
      * @throws Exception any error occurred in the process
      */
     public void registerInstance(String namespaceId, String serviceName, Instance instance) throws NacosException {
-
+        // 创建1个空服务
         createEmptyService(namespaceId, serviceName, instance.isEphemeral());
 
+        //根据 nameSpace、服务名，获取缓存的注册的服务信息
         Service service = getService(namespaceId, serviceName);
 
         if (service == null) {
@@ -475,6 +484,7 @@ public class ServiceManager implements RecordListener<Service> {
                 "service not found, namespace: " + namespaceId + ", service: " + serviceName);
         }
 
+        //服务注册
         addInstance(namespaceId, serviceName, instance.isEphemeral(), instance);
     }
 
@@ -644,8 +654,13 @@ public class ServiceManager implements RecordListener<Service> {
     }
 
     private void putServiceAndInit(Service service) throws NacosException {
+        // 将服务加入 serviceMap 缓存
         putService(service);
+
+        // 建立心跳检测任务机制，默认五秒
         service.init();
+
+        // 实现数据一致性的监听
         consistencyService.listen(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), true), service);
         consistencyService.listen(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), false), service);
         Loggers.SRV_LOG.info("[NEW-SERVICE] {}", service.toJSON());
