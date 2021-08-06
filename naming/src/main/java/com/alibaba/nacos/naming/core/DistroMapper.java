@@ -64,6 +64,7 @@ public class DistroMapper implements ServerChangeListener {
     }
 
     public boolean responsible(String serviceName) {
+        // 是否是单机
         if (!switchDomain.isDistroEnabled() || SystemUtils.STANDALONE_MODE) {
             return true;
         }

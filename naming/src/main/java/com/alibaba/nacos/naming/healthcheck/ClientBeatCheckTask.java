@@ -75,13 +75,16 @@ public class ClientBeatCheckTask implements Runnable {
                 return;
             }
 
+            // 是否开启服务健康检查
             if (!getSwitchDomain().isHealthCheckEnabled()) {
                 return;
             }
 
+            //获取所有的服务注册实例
             List<Instance> instances = service.allIPs(true);
 
             // first set health status of instances:
+            // 设置实例的运行状况
             for (Instance instance : instances) {
                 if (System.currentTimeMillis() - instance.getLastBeat() > instance.getInstanceHeartBeatTimeOut()) {
                     if (!instance.isMarked()) {
@@ -102,6 +105,7 @@ public class ClientBeatCheckTask implements Runnable {
             }
 
             // then remove obsolete instances:
+            // 删除过期的实例
             for (Instance instance : instances) {
 
                 if (instance.isMarked()) {
@@ -111,6 +115,7 @@ public class ClientBeatCheckTask implements Runnable {
                 if (System.currentTimeMillis() - instance.getLastBeat() > instance.getIpDeleteTimeout()) {
                     // delete instance
                     Loggers.SRV_LOG.info("[AUTO-DELETE-IP] service: {}, ip: {}", service.getName(), JSON.toJSONString(instance));
+                    // 删除实例
                     deleteIP(instance);
                 }
             }

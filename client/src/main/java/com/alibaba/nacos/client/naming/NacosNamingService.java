@@ -203,8 +203,9 @@ public class NacosNamingService implements NamingService {
 
     @Override
     public void registerInstance(String serviceName, String groupName, Instance instance) throws NacosException {
-        //服务是临时注册的, 默认 true
+        //如果服务是临时注册的, 默认 true
         if (instance.isEphemeral()) {
+            // 构建心跳包
             BeatInfo beatInfo = new BeatInfo();
             beatInfo.setServiceName(NamingUtils.getGroupedName(serviceName, groupName));
             beatInfo.setIp(instance.getIp());

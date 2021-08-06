@@ -505,17 +505,20 @@ public class ServiceManager implements RecordListener<Service> {
     }
 
     public void addInstance(String namespaceId, String serviceName, boolean ephemeral, Instance... ips) throws NacosException {
-
+        //生成唯一的 key
         String key = KeyBuilder.buildInstanceListKey(namespaceId, serviceName, ephemeral);
 
+        //获取服务
         Service service = getService(namespaceId, serviceName);
 
         synchronized (service) {
+            // 比较并获取新的实例列表
             List<Instance> instanceList = addIpAddresses(service, ephemeral, ips);
 
             Instances instances = new Instances();
             instances.setInstanceList(instanceList);
 
+            // 保存服务实例
             consistencyService.put(key, instances);
         }
     }

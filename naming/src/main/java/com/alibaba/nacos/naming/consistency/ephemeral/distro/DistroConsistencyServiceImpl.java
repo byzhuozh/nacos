@@ -116,6 +116,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
             }
         });
 
+        // 提交通知任务
         executor.submit(notifier);
     }
 
@@ -169,6 +170,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
             datum.value = (Instances) value;
             datum.key = key;
             datum.timestamp.incrementAndGet();
+            // 保存命名数据
             dataStore.put(key, datum);
         }
 
@@ -176,6 +178,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
             return;
         }
 
+        // 添加任务
         notifier.addTask(key, ApplyAction.CHANGE);
     }
 
