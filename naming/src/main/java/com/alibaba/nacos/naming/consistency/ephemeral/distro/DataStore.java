@@ -34,6 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class DataStore {
 
+    //key: 服务名， val: Instances, 服务的实例集合
     private Map<String, Datum> dataMap = new ConcurrentHashMap<>(1024);
 
     public void put(String key, Datum value) {

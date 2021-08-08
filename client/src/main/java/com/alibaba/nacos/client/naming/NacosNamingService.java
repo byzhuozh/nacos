@@ -95,8 +95,9 @@ public class NacosNamingService implements NamingService {
         initServerAddr(properties);
         InitUtils.initWebRootContext();
 
-        //初始化缓存地址
+        // 初始化缓存目录，默认为 {user.home} + "/nacos/naming/" + namespace
         initCacheDir();
+        // 初始化日志名，默认为 "naming.log"
         initLogName(properties);
 
         //事件分发器

@@ -20,6 +20,8 @@ import java.util.List;
 /**
  * Nacos cluster member change event listener
  *
+ * 服务信息变化监听器
+ *
  * @author nkorange
  * @since 1.0.0
  */

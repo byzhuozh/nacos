@@ -72,6 +72,7 @@ public class ServerListManager {
 
     @PostConstruct
     public void init() {
+        //
         GlobalExecutor.registerServerListUpdater(new ServerListUpdater());
         GlobalExecutor.registerServerStatusReporter(new ServerStatusReporter(), 2000);
     }

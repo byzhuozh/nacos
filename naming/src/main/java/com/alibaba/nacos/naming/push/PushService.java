@@ -342,6 +342,7 @@ public class PushService implements ApplicationContextAware, ApplicationListener
             return;
         }
 
+        // 发送服务变更事件
         this.applicationContext.publishEvent(new ServiceChangeEvent(this, service));
     }
 

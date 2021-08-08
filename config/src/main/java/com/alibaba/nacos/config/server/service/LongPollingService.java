@@ -390,9 +390,11 @@ public class LongPollingService extends AbstractEventListener {
                                 "fix", RequestUtil.getRemoteIp((HttpServletRequest)asyncContext.getRequest()),
                                 "polling",
                                 clientMd5Map.size(), probeRequestSize);
+
                             List<String> changedGroups = MD5Util.compareMd5(
                                 (HttpServletRequest)asyncContext.getRequest(),
                                 (HttpServletResponse)asyncContext.getResponse(), clientMd5Map);
+
                             if (changedGroups.size() > 0) {
                                 sendResponse(changedGroups);
                             } else {

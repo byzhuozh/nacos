@@ -86,6 +86,7 @@ public class ClientBeatCheckTask implements Runnable {
             // first set health status of instances:
             // 设置实例的运行状况
             for (Instance instance : instances) {
+                // 如果15s 未接收到客户端的心跳，将客户端的健康状态设置为 false, 调用监听器，udp 通知
                 if (System.currentTimeMillis() - instance.getLastBeat() > instance.getInstanceHeartBeatTimeOut()) {
                     if (!instance.isMarked()) {
                         if (instance.isHealthy()) {
@@ -93,7 +94,11 @@ public class ClientBeatCheckTask implements Runnable {
                             Loggers.EVT_LOG.info("{POS} {IP-DISABLED} valid: {}:{}@{}@{}, region: {}, msg: client timeout after {}, last beat: {}",
                                 instance.getIp(), instance.getPort(), instance.getClusterName(), service.getName(),
                                 UtilsAndCommons.LOCALHOST_SITE, instance.getInstanceHeartBeatTimeOut(), instance.getLastBeat());
+
+                            // 推送服务变化时间
                             getPushService().serviceChanged(service);
+
+                            // 发布心跳超时时间
                             SpringContext.getAppContext().publishEvent(new InstanceHeartbeatTimeoutEvent(this, instance));
                         }
                     }
@@ -112,6 +117,7 @@ public class ClientBeatCheckTask implements Runnable {
                     continue;
                 }
 
+                // 如果30s 内未接收到客户端心跳，则剔除服务
                 if (System.currentTimeMillis() - instance.getLastBeat() > instance.getIpDeleteTimeout()) {
                     // delete instance
                     Loggers.SRV_LOG.info("[AUTO-DELETE-IP] service: {}, ip: {}", service.getName(), JSON.toJSONString(instance));

@@ -46,9 +46,11 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
     @JSONField(serialize = false)
     private HealthCheckTask checkTask;
 
+    // 永久节点的的实例集合
     @JSONField(serialize = false)
     private Set<Instance> persistentInstances = new HashSet<>();
 
+    // 临时节点的实例集合
     @JSONField(serialize = false)
     private Set<Instance> ephemeralInstances = new HashSet<>();
 
@@ -103,12 +105,16 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
     }
 
     public void init() {
+        // 只有初始化一次
         if (inited) {
             return;
         }
+        // cluster 所有IP 健康检查任务
         checkTask = new HealthCheckTask(this);
 
         HealthCheckReactor.scheduleCheck(checkTask);
+
+        // 更新为已初始化
         inited = true;
     }
 

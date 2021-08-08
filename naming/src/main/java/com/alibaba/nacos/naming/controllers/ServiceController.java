@@ -278,6 +278,9 @@ public class ServiceController {
         return result;
     }
 
+    /**
+     * nacos集群内 注册中心之间通信，校验服务状态是否一致
+     */
     @PostMapping("/status")
     public String serviceStatus(HttpServletRequest request) throws Exception {
 
@@ -307,19 +310,23 @@ public class ServiceController {
                 }
                 String serviceName = entry.getKey();
                 String checksum = entry.getValue();
+                // 获取服务信息
                 Service service = serviceManager.getService(checksums.namespaceId, serviceName);
 
                 if (service == null) {
                     continue;
                 }
 
+                //重新刷新下自己的校验和
                 service.recalculateChecksum();
 
+                //比较校验和
                 if (!checksum.equals(service.getChecksum())) {
                     if (Loggers.SRV_LOG.isDebugEnabled()) {
                         Loggers.SRV_LOG.debug("checksum of {} is not consistent, remote: {}, checksum: {}, local: {}",
                             serviceName, serverIp, checksum, service.getChecksum());
                     }
+                    //如果是注册中心之间，服务状态不一致，添加到队列中
                     serviceManager.addUpdatedService2Queue(checksums.namespaceId, serviceName, serverIp, checksum);
                 }
             }

@@ -39,13 +39,13 @@ public class KeyBuilder {
     public static final String BRIEF_INSTANCE_LIST_KEY_PREFIX = "iplist.";
 
     private static String buildEphemeralInstanceListKey(String namespaceId, String serviceName) {
-        return INSTANCE_LIST_KEY_PREFIX + EPHEMERAL_KEY_PREFIX + namespaceId + NAMESPACE_KEY_CONNECTOR
-            + serviceName;
+        // com.alibaba.nacos.naming.iplist.ephemeral.{namespaceId}+##+{serviceName}
+        return INSTANCE_LIST_KEY_PREFIX + EPHEMERAL_KEY_PREFIX + namespaceId + NAMESPACE_KEY_CONNECTOR + serviceName;
     }
 
     private static String buildPersistentInstanceListKey(String namespaceId, String serviceName) {
-        return INSTANCE_LIST_KEY_PREFIX + namespaceId + NAMESPACE_KEY_CONNECTOR
-            + serviceName;
+        // com.alibaba.nacos.naming.iplist.{namespaceId}+##+{serviceName}
+        return INSTANCE_LIST_KEY_PREFIX + namespaceId + NAMESPACE_KEY_CONNECTOR + serviceName;
     }
 
     public static String buildInstanceListKey(String namespaceId, String serviceName, boolean ephemeral) {

@@ -568,9 +568,11 @@ public class ClientWorker {
                         LOGGER.error(message, ioe);
                     }
                 }
+
                 for (CacheData cacheData : cacheDatas) {
                     if (!cacheData.isInitializing() || inInitializingCacheList
                         .contains(GroupKey.getKeyTenant(cacheData.dataId, cacheData.group, cacheData.tenant))) {
+
                         cacheData.checkListenerMd5();
                         cacheData.setInitializing(false);
                     }

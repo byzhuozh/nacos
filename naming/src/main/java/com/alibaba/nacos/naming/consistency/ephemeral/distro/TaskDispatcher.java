@@ -50,6 +50,7 @@ public class TaskDispatcher {
 
     @PostConstruct
     public void init() {
+        // 根据cpu个数，新建任务，并且执行每个任务
         for (int i = 0; i < cpuCoreCount; i++) {
             TaskScheduler taskScheduler = new TaskScheduler(i);
             taskSchedulerList.add(taskScheduler);
@@ -58,6 +59,7 @@ public class TaskDispatcher {
     }
 
     public void addTask(String key) {
+        // 添加实例到变更列表
         taskSchedulerList.get(UtilsAndCommons.shakeUp(key, cpuCoreCount)).addTask(key);
     }
 
@@ -85,14 +87,12 @@ public class TaskDispatcher {
 
         @Override
         public void run() {
-
             List<String> keys = new ArrayList<>();
+
             while (true) {
-
                 try {
-
-                    String key = queue.poll(partitionConfig.getTaskDispatchPeriod(),
-                        TimeUnit.MILLISECONDS);
+                    // 2s 超时阻塞
+                    String key = queue.poll(partitionConfig.getTaskDispatchPeriod(), TimeUnit.MILLISECONDS);
 
                     if (Loggers.DISTRO.isDebugEnabled() && StringUtils.isNotBlank(key)) {
                         Loggers.DISTRO.debug("got key: {}", key);

@@ -62,6 +62,7 @@ public class ServiceManager implements RecordListener<Service> {
     /**
      * Map<namespace, Map<group::serviceName, Service>>
      */
+    //Key: nameSpace, val: {key=group::serviceName，val=服务信息}
     private Map<String, Map<String, Service>> serviceMap = new ConcurrentHashMap<>();
 
     private LinkedBlockingDeque<ServiceKey> toBeUpdatedServicesQueue = new LinkedBlockingDeque<>(1024 * 1024);
@@ -92,9 +93,10 @@ public class ServiceManager implements RecordListener<Service> {
 
     @PostConstruct
     public void init() {
-
+        // 延迟6s后，开始服务状态上报
         UtilsAndCommons.SERVICE_SYNCHRONIZATION_EXECUTOR.schedule(new ServiceReporter(), 60000, TimeUnit.MILLISECONDS);
 
+        // 异步  服务健康状态变更监听
         UtilsAndCommons.SERVICE_UPDATE_EXECUTOR.submit(new UpdatedServiceProcessor());
 
         try {
@@ -295,6 +297,7 @@ public class ServiceManager implements RecordListener<Service> {
     }
 
     public void updatedHealthStatus(String namespaceId, String serviceName, String serverIP) {
+        //获取 serverIP 下该服务的所有实例健康状态
         Message msg = synchronizer.get(serverIP, UtilsAndCommons.assembleFullServiceName(namespaceId, serviceName));
         JSONObject serviceJson = JSON.parseObject(msg.getData());
 
@@ -317,10 +320,11 @@ public class ServiceManager implements RecordListener<Service> {
 
         List<Instance> instances = service.allIPs();
         for (Instance instance : instances) {
-
+            // 判断 serverIP 下该服务的实例状态和本地的该服务的实例健康状态是否一致
             boolean valid = Boolean.parseBoolean(ipsMap.get(instance.toIPAddr()));
             if (valid != instance.isHealthy()) {
                 changed = true;
+                // 不一致，更新健康状态
                 instance.setHealthy(valid);
                 Loggers.EVT_LOG.info("{} {SYNC} IP-{} : {}:{}@{}",
                     serviceName, (instance.isHealthy() ? "ENABLED" : "DISABLED"),
@@ -329,6 +333,7 @@ public class ServiceManager implements RecordListener<Service> {
         }
 
         if (changed) {
+            // 发送服务变更事件
             pushService.serviceChanged(service);
         }
 
@@ -484,7 +489,7 @@ public class ServiceManager implements RecordListener<Service> {
                 "service not found, namespace: " + namespaceId + ", service: " + serviceName);
         }
 
-        //服务注册
+        //添加实例
         addInstance(namespaceId, serviceName, instance.isEphemeral(), instance);
     }
 
@@ -506,19 +511,23 @@ public class ServiceManager implements RecordListener<Service> {
 
     public void addInstance(String namespaceId, String serviceName, boolean ephemeral, Instance... ips) throws NacosException {
         //生成唯一的 key
+        //临时服务：  com.alibaba.nacos.naming.iplist.ephemeral.{namespaceId}+##+{serviceName}
+        //持久化服务：com.alibaba.nacos.naming.iplist.{namespaceId}+##+{serviceName}
         String key = KeyBuilder.buildInstanceListKey(namespaceId, serviceName, ephemeral);
 
         //获取服务
         Service service = getService(namespaceId, serviceName);
 
         synchronized (service) {
-            // 比较并获取新的实例列表
+            // 获取当前服务的所有 Instance 实例（将新的instance 与之前的instance进行合并，生成一个新的instance集合）
             List<Instance> instanceList = addIpAddresses(service, ephemeral, ips);
 
             Instances instances = new Instances();
             instances.setInstanceList(instanceList);
 
-            // 保存服务实例
+            // 刷新 service 中的 instance 列表
+            // AP 模式采用 Distro 协议: DistroConsistencyServiceImpl
+            // CP 模式采用 Reft 协议: RaftConsistencyServiceImpl
             consistencyService.put(key, instances);
         }
     }
@@ -568,6 +577,7 @@ public class ServiceManager implements RecordListener<Service> {
 
     public List<Instance> updateIpAddresses(Service service, String action, boolean ephemeral, Instance... ips) throws NacosException {
 
+        // 获取 service 数据存储 dataStore 中的实例列表
         Datum datum = consistencyService.get(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), ephemeral));
 
         List<Instance> currentIPs = service.allIPs(ephemeral);
@@ -649,10 +659,12 @@ public class ServiceManager implements RecordListener<Service> {
         if (!serviceMap.containsKey(service.getNamespaceId())) {
             synchronized (putServiceLock) {
                 if (!serviceMap.containsKey(service.getNamespaceId())) {
+                    // 初始化 nameSpace
                     serviceMap.put(service.getNamespaceId(), new ConcurrentHashMap<>(16));
                 }
             }
         }
+        //缓存服务
         serviceMap.get(service.getNamespaceId()).put(service.getName(), service);
     }
 
@@ -663,7 +675,7 @@ public class ServiceManager implements RecordListener<Service> {
         // 建立心跳检测任务机制，默认五秒
         service.init();
 
-        // 实现数据一致性的监听
+        // 往 service 注入监听器，实现数据一致性的监听
         consistencyService.listen(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), true), service);
         consistencyService.listen(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), false), service);
         Loggers.SRV_LOG.info("[NEW-SERVICE] {}", service.toJSON());
@@ -775,8 +787,9 @@ public class ServiceManager implements RecordListener<Service> {
     }
 
     public static class ServiceChecksum {
-
+        //命名空间
         public String namespaceId;
+        //key:服务名，val=校验和
         public Map<String, String> serviceName2Checksum = new HashMap<String, String>();
 
         public ServiceChecksum() {
@@ -803,7 +816,7 @@ public class ServiceManager implements RecordListener<Service> {
         @Override
         public void run() {
             try {
-
+                //获取所有的服务名， key: nameSpace, val: group::serviceName
                 Map<String, Set<String>> allServiceNames = getAllServiceNames();
 
                 if (allServiceNames.size() <= 0) {
@@ -812,29 +825,32 @@ public class ServiceManager implements RecordListener<Service> {
                 }
 
                 for (String namespaceId : allServiceNames.keySet()) {
-
+                    //服务校验类
                     ServiceChecksum checksum = new ServiceChecksum(namespaceId);
 
                     for (String serviceName : allServiceNames.get(namespaceId)) {
+                        // 判断服务是否可达
                         if (!distroMapper.responsible(serviceName)) {
                             continue;
                         }
 
+                        //获取服务
                         Service service = getService(namespaceId, serviceName);
-
                         if (service == null) {
                             continue;
                         }
 
+                        // 重新计算该服务的 md5（校验和）
                         service.recalculateChecksum();
-
+                        // 添加每个服务对应的校验和
                         checksum.addItem(serviceName, service.getChecksum());
                     }
 
+                    //服务信息（每次都一个 nameSpace 下的所有服务集合）
                     Message msg = new Message();
-
                     msg.setData(JSON.toJSONString(checksum));
 
+                    // 集群中的服务地址列表
                     List<Server> sameSiteServers = serverListManager.getServers();
 
                     if (sameSiteServers == null || sameSiteServers.size() <= 0) {
@@ -842,16 +858,20 @@ public class ServiceManager implements RecordListener<Service> {
                     }
 
                     for (Server server : sameSiteServers) {
+                        // 剔除自己的地址
                         if (server.getKey().equals(NetUtils.localServer())) {
                             continue;
                         }
+                        //向集群中的其他注册中心，发送服务状态
                         synchronizer.send(server.getKey(), msg);
                     }
                 }
             } catch (Exception e) {
                 Loggers.SRV_LOG.error("[DOMAIN-STATUS] Exception while sending service status", e);
             } finally {
-                UtilsAndCommons.SERVICE_SYNCHRONIZATION_EXECUTOR.schedule(this, switchDomain.getServiceStatusSynchronizationPeriodMillis(), TimeUnit.MILLISECONDS);
+                // 每5s和其他服务做一次通信，上报服务状态
+                UtilsAndCommons.SERVICE_SYNCHRONIZATION_EXECUTOR.schedule(this,
+                    switchDomain.getServiceStatusSynchronizationPeriodMillis(), TimeUnit.MILLISECONDS);
             }
         }
     }

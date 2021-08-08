@@ -77,7 +77,7 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
      * TODO set customized push expire time:
      */
     private long pushCacheMillis = 0L;
-
+    // key: cluster name, val=Cluster
     private Map<String, Cluster> clusterMap = new HashMap<>();
 
     public Service() {
@@ -161,6 +161,7 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
                 throw new RuntimeException("got null instance " + key);
             }
 
+            // 处理权重，最高 10000.0D
             if (instance.getWeight() > 10000.0D) {
                 instance.setWeight(10000.0D);
             }
@@ -170,8 +171,10 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
             }
         }
 
+        // 更新 instance
         updateIPs(value.getInstanceList(), KeyBuilder.matchEphemeralInstanceListKey(key));
 
+        // 更新服务的校验和
         recalculateChecksum();
     }
 
@@ -208,15 +211,21 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
                     continue;
                 }
 
+                // 设置 instance 的默认集群名
                 if (StringUtils.isEmpty(instance.getClusterName())) {
                     instance.setClusterName(UtilsAndCommons.DEFAULT_CLUSTER_NAME);
                 }
 
+                // 创建对应的集群名
                 if (!clusterMap.containsKey(instance.getClusterName())) {
                     Loggers.SRV_LOG.warn("cluster: {} not found, ip: {}, will create new cluster with default configuration.",
                         instance.getClusterName(), instance.toJSON());
                     Cluster cluster = new Cluster(instance.getClusterName(), this);
+
+                    // 集群初始化
                     cluster.init();
+
+                    //添加到 clusterMap
                     getClusterMap().put(instance.getClusterName(), cluster);
                 }
 
@@ -235,13 +244,17 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
         for (Map.Entry<String, List<Instance>> entry : ipMap.entrySet()) {
             //make every ip mine
             List<Instance> entryIPs = entry.getValue();
+            // 更新集群下的 instance
             clusterMap.get(entry.getKey()).updateIPs(entryIPs, ephemeral);
         }
 
+        //更新最后修改时间
         setLastModifiedMillis(System.currentTimeMillis());
+        //获取 pushService ，通知服务改变
         getPushService().serviceChanged(this);
-        StringBuilder stringBuilder = new StringBuilder();
 
+        //日志打印
+        StringBuilder stringBuilder = new StringBuilder();
         for (Instance instance : allIPs()) {
             stringBuilder.append(instance.toIPAddr()).append("_").append(instance.isHealthy()).append(",");
         }
@@ -252,11 +265,12 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
     }
 
     public void init() {
-        //建立心跳检测任务clientBeatCheckTask，默认五秒
+        //建立心跳检测任务 clientBeatCheckTask，默认五秒
         HealthCheckReactor.scheduleCheck(clientBeatCheckTask);
 
         for (Map.Entry<String, Cluster> entry : clusterMap.entrySet()) {
             entry.getValue().setService(this);
+            // 初始化健康检查任务
             entry.getValue().init();
         }
     }
@@ -454,8 +468,7 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
         }
 
         for (Instance ip : ips) {
-            String string = ip.getIp() + ":" + ip.getPort() + "_" + ip.getWeight() + "_"
-                + ip.isHealthy() + "_" + ip.getClusterName();
+            String string = ip.getIp() + ":" + ip.getPort() + "_" + ip.getWeight() + "_" + ip.isHealthy() + "_" + ip.getClusterName();
             ipsString.append(string);
             ipsString.append(",");
         }

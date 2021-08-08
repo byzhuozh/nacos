@@ -338,6 +338,7 @@ public class InstanceController {
         String serviceName;
         String namespaceId;
 
+        // 解析出 nameSpace 和 服务名
         if (key.contains(UtilsAndCommons.NAMESPACE_SERVICE_CONNECTOR)) {
             namespaceId = key.split(UtilsAndCommons.NAMESPACE_SERVICE_CONNECTOR)[0];
             serviceName = key.split(UtilsAndCommons.NAMESPACE_SERVICE_CONNECTOR)[1];
@@ -352,11 +353,13 @@ public class InstanceController {
             throw new NacosException(NacosException.NOT_FOUND, "service: " + serviceName + " not found.");
         }
 
+        // 获取该服务的所有注册实例
         List<Instance> ips = service.allIPs();
 
         JSONObject result = new JSONObject();
         JSONArray ipArray = new JSONArray();
 
+        //实例健康状态
         for (Instance ip : ips) {
             ipArray.add(ip.toIPAddr() + "_" + ip.isHealthy());
         }

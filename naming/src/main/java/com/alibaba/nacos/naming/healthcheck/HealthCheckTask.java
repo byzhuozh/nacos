@@ -47,6 +47,9 @@ public class HealthCheckTask implements Runnable {
     @JSONField(serialize = false)
     private SwitchDomain switchDomain;
 
+    /*
+     * HealthCheckProcessorDelegate
+     */
     @JSONField(serialize = false)
     private HealthCheckProcessor healthCheckProcessor;
 
@@ -71,6 +74,7 @@ public class HealthCheckTask implements Runnable {
         try {
             if (distroMapper.responsible(cluster.getService().getName()) &&
                 switchDomain.isHealthCheckEnabled(cluster.getService().getName())) {
+                // HealthCheckProcessorDelegate
                 healthCheckProcessor.process(this);
                 if (Loggers.EVT_LOG.isDebugEnabled()) {
                     Loggers.EVT_LOG.debug("[HEALTH-CHECK] schedule health check task: {}", cluster.getService().getName());

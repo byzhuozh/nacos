@@ -39,6 +39,7 @@ public class DelegateConsistencyServiceImpl implements ConsistencyService {
 
     @Override
     public void put(String key, Record value) throws NacosException {
+        // 写入内存
         mapConsistencyService(key).put(key, value);
     }
 

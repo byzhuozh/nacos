@@ -21,6 +21,8 @@ import com.alibaba.nacos.naming.misc.UtilsAndCommons;
 /**
  * Member node of Nacos cluster
  *
+ * 集群的节点信息
+ *
  * @author nkorange
  * @since 1.0.0
  */
@@ -28,27 +30,43 @@ public class Server implements Comparable<Server> {
 
     /**
      * IP of member
+     * 节点IP地址
      */
     private String ip;
 
     /**
      * serving port of member.
+     * 端口号
      */
     private int servePort;
 
+    /**
+     * 节点位置，暂时没有使用
+     */
     private String site = UtilsAndCommons.UNKNOWN_SITE;
 
+    // weight：节点权重
     private int weight = 1;
 
     /**
      * additional weight, used to adjust manually
+     * 添加权重
      */
     private int adWeight;
 
+    /*
+     * 是否存活，默认为false
+     */
     private boolean alive = false;
 
+    /*
+     * 最后服务时间 long类型
+     */
     private long lastRefTime = 0L;
 
+    /**
+     * 最后服务时间 String类型
+     */
     private String lastRefTimeStr;
 
     public String getIp() {

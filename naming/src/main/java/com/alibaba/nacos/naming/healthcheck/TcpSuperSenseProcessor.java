@@ -53,6 +53,7 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
 
     public static final int CONNECT_TIMEOUT_MS = 500;
 
+    //key: 服务名:集群名:ip:port, val:
     private Map<String, BeatKey> keyMap = new ConcurrentHashMap<>();
 
     private BlockingQueue<Beat> taskQueue = new LinkedBlockingQueue<Beat>();
@@ -107,6 +108,7 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
 
     @Override
     public void process(HealthCheckTask task) {
+        // 获取所有临时的注册实例
         List<Instance> ips = task.getCluster().allIPs(false);
 
         if (CollectionUtils.isEmpty(ips)) {
@@ -133,8 +135,10 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
                 continue;
             }
 
+            // 构建心跳包 Beat，添加到队列中
             Beat beat = new Beat(ip, task);
             taskQueue.add(beat);
+
             MetricsMonitor.getTcpHealthCheckMonitor().incrementAndGet();
         }
     }
@@ -150,6 +154,7 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
             tasks.add(new TaskProcessor(beat));
         } while (taskQueue.size() > 0 && tasks.size() < NIO_THREAD_COUNT * 64);
 
+        // 异步执行心跳任务
         for (Future<?> f : NIO_EXECUTOR.invokeAll(tasks)) {
             f.get();
         }
@@ -159,6 +164,7 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
     public void run() {
         while (true) {
             try {
+                // 处理待发送的心跳包任务队列
                 processTask();
 
                 int readyCount = selector.selectNow();
@@ -171,6 +177,7 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
                     SelectionKey key = iter.next();
                     iter.remove();
 
+                    // 异步处理就绪事件
                     NIO_EXECUTOR.execute(new PostProcessor(key));
                 }
             } catch (Throwable e) {
@@ -191,6 +198,7 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
             Beat beat = (Beat) key.attachment();
             SocketChannel channel = (SocketChannel) key.channel();
             try {
+                //
                 if (!beat.isHealthy()) {
                     //invalid beat means this server is no longer responsible for the current service
                     key.cancel();
@@ -353,6 +361,9 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
         }
     }
 
+    /**
+     * 心跳任务处理器
+     */
     private class TaskProcessor implements Callable<Void> {
 
         private static final int MAX_WAIT_TIME_MILLISECONDS = 500;
@@ -385,6 +396,7 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
                     beatKey.key.channel().close();
                 }
 
+                //创建连接
                 channel = SocketChannel.open();
                 channel.configureBlocking(false);
                 // only by setting this can we make the socket close event asynchronous
@@ -396,6 +408,7 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
                 int port = cluster.isUseIPPort4Check() ? instance.getPort() : cluster.getDefCkport();
                 channel.connect(new InetSocketAddress(instance.getIp(), port));
 
+                //连接注册
                 SelectionKey key
                     = channel.register(selector, SelectionKey.OP_CONNECT | SelectionKey.OP_READ);
                 key.attach(beat);
@@ -403,8 +416,8 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
 
                 beat.setStartTime(System.currentTimeMillis());
 
-                NIO_EXECUTOR.schedule(new TimeOutTask(key),
-                    CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                //500ms 后，校验是否完成连接
+                NIO_EXECUTOR.schedule(new TimeOutTask(key), CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             } catch (Exception e) {
                 beat.finishCheck(false, false, switchDomain.getTcpHealthParams().getMax(), "tcp:error:" + e.getMessage());
 

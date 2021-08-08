@@ -3,13 +3,13 @@ package com.alibaba.nacos.example.byzhuozh;
 public interface Constants {
 
 
-    String NACOS_SERVER_ADDRESS = "localhost";
+    String NACOS_SERVER_ADDRESS = "localhost:8848";
 
 //    String NAMESPACE = "nacos.naming";
 
-    String NAMESPACE = "550a0145-d8aa-450d-a7e5-c3eb456830e5";
+    String NAMESPACE = "60201bf3-11f1-4f72-97db-50631de1b0c6";
 
-    String SERVICE_NAME = "nacos.echo.service";
+    String SERVICE_NAME = "byzhuozh-provirder";
 
     String IP_1 = "192.168.0.101";
     int PORT_1 = 8881;

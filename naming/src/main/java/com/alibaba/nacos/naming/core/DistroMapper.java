@@ -32,10 +32,13 @@ import java.util.List;
 
 /**
  * @author nkorange
+ *
+ * distro协议的服务信息变化监听器
  */
 @Component("distroMapper")
 public class DistroMapper implements ServerChangeListener {
 
+    // ip:port
     private List<String> healthyList = new ArrayList<>();
 
     public List<String> getHealthyList() {
@@ -109,9 +112,9 @@ public class DistroMapper implements ServerChangeListener {
 
     @Override
     public void onChangeHealthyServerList(List<Server> latestReachableMembers) {
-
         List<String> newHealthyList = new ArrayList<>();
         for (Server server : latestReachableMembers) {
+            // ip:port
             newHealthyList.add(server.getKey());
         }
         healthyList = newHealthyList;

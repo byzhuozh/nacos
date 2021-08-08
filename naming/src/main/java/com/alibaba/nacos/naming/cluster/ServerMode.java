@@ -35,14 +35,19 @@ package com.alibaba.nacos.naming.cluster;
 public enum ServerMode {
     /**
      * AP mode
+     * 提供最终的一致性和网络分区容忍度，但数据持久性
      */
     AP,
+
     /**
      * CP mode
+     * 提供了强一致性、数据持久性和网络分区容忍度
      */
     CP,
+
     /**
      * Mixed mode
+     * 混合模式为一些数据提供CP，为另一些数据提供AP
      */
     MIXED
 }

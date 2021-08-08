@@ -55,6 +55,8 @@ import java.util.concurrent.*;
  *
  * @author nkorange
  * @since 1.0.0
+ *
+ * AP 模式的一致性服务
  */
 @org.springframework.stereotype.Service("distroConsistencyService")
 public class DistroConsistencyServiceImpl implements EphemeralConsistencyService {
@@ -148,7 +150,10 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
 
     @Override
     public void put(String key, Record value) throws NacosException {
+        //本地存储实例
         onPut(key, value);
+
+        // 同步任务派发
         taskDispatcher.addTask(key);
     }
 
@@ -164,8 +169,10 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
     }
 
     public void onPut(String key, Record value) {
-
+        // 如果是临时注册的服务
         if (KeyBuilder.matchEphemeralInstanceListKey(key)) {
+
+            //构建 datum
             Datum<Instances> datum = new Datum<>();
             datum.value = (Instances) value;
             datum.key = key;
@@ -174,11 +181,13 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
             dataStore.put(key, datum);
         }
 
+        // 如果 listener 里边有没有key, 则直接返回，主要用作发布订阅，进行通知
+        // 在 ServiceManager.putServiceAndInit 方法中注入了两个监听器
         if (!listeners.containsKey(key)) {
             return;
         }
 
-        // 添加任务
+        // 添加通知任务，表示该服务 key 发生变更
         notifier.addTask(key, ApplyAction.CHANGE);
     }
 
@@ -364,13 +373,18 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
         private BlockingQueue<Pair> tasks = new LinkedBlockingQueue<Pair>(1024 * 1024);
 
         public void addTask(String datumKey, ApplyAction action) {
-
+            // 如果已经存在，并且是 change 时间
             if (services.containsKey(datumKey) && action == ApplyAction.CHANGE) {
                 return;
             }
+
+           // change 时间
             if (action == ApplyAction.CHANGE) {
+                // 往 缓存中 存一份
                 services.put(datumKey, StringUtils.EMPTY);
             }
+
+            // 添加到任务队列中
             tasks.add(Pair.with(datumKey, action));
         }
 
@@ -384,7 +398,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
 
             while (true) {
                 try {
-
+                    // 取出任务
                     Pair pair = tasks.take();
 
                     if (pair == null) {
@@ -407,11 +421,14 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
                         count++;
 
                         try {
+                            // 通知数据已经改变
                             if (action == ApplyAction.CHANGE) {
+                                // 将 key 对应的实例传过去
                                 listener.onChange(datumKey, dataStore.get(datumKey).value);
                                 continue;
                             }
 
+                            // 通知数据删除
                             if (action == ApplyAction.DELETE) {
                                 listener.onDelete(datumKey);
                                 continue;
