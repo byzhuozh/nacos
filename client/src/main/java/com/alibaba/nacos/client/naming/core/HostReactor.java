@@ -42,6 +42,7 @@ public class HostReactor {
 
     private final Map<String, ScheduledFuture<?>> futureMap = new HashMap<String, ScheduledFuture<?>>();
 
+    //key: 服务名@@集群名，服务信息
     private Map<String, ServiceInfo> serviceInfoMap;
 
     private Map<String, Object> updatingMap;
@@ -99,7 +100,9 @@ public class HostReactor {
 
     public ServiceInfo processServiceJSON(String json) {
         ServiceInfo serviceInfo = JSON.parseObject(json, ServiceInfo.class);
+        // 旧缓存信息
         ServiceInfo oldService = serviceInfoMap.get(serviceInfo.getKey());
+
         if (serviceInfo.getHosts() == null || !serviceInfo.validate()) {
             //empty or error push, just ignore
             return oldService;
@@ -114,6 +117,7 @@ public class HostReactor {
                     + ", new-t: " + serviceInfo.getLastRefTime());
             }
 
+            // 更新服务信息
             serviceInfoMap.put(serviceInfo.getKey(), serviceInfo);
 
             Map<String, Instance> oldHostMap = new HashMap<String, Instance>(oldService.getHosts().size());
@@ -220,21 +224,26 @@ public class HostReactor {
     }
 
     public ServiceInfo getServiceInfo(final String serviceName, final String clusters) {
-
         NAMING_LOGGER.debug("failover-mode: " + failoverReactor.isFailoverSwitch());
+
         String key = ServiceInfo.getKey(serviceName, clusters);
+        // 判断是否开启 failover
         if (failoverReactor.isFailoverSwitch()) {
             return failoverReactor.getService(key);
         }
 
+        // 先从本地缓存中获取该服务 serviceInfoMap
         ServiceInfo serviceObj = getServiceInfo0(serviceName, clusters);
 
         if (null == serviceObj) {
+            //初始化服务
             serviceObj = new ServiceInfo(serviceName, clusters);
 
+            //缓存服务
             serviceInfoMap.put(serviceObj.getKey(), serviceObj);
 
             updatingMap.put(serviceName, new Object());
+            // 从服务端拉取服务信息
             updateServiceNow(serviceName, clusters);
             updatingMap.remove(serviceName);
 
@@ -252,6 +261,7 @@ public class HostReactor {
             }
         }
 
+        //添加定时任务
         scheduleUpdateIfAbsent(serviceName, clusters);
 
         return serviceInfoMap.get(serviceObj.getKey());
@@ -269,7 +279,10 @@ public class HostReactor {
                 return;
             }
 
+            // 添加任务
             ScheduledFuture<?> future = addTask(new UpdateTask(serviceName, clusters));
+
+            // 将任务放到 futureMap 中
             futureMap.put(ServiceInfo.getKey(serviceName, clusters), future);
         }
     }
@@ -278,9 +291,11 @@ public class HostReactor {
         ServiceInfo oldService = getServiceInfo0(serviceName, clusters);
         try {
 
+            //拉取服务信息
             String result = serverProxy.queryList(serviceName, clusters, pushReceiver.getUDPPort(), false);
 
             if (StringUtils.isNotEmpty(result)) {
+                //处理拉取结果
                 processServiceJSON(result);
             }
         } catch (Exception e) {
@@ -315,9 +330,11 @@ public class HostReactor {
         @Override
         public void run() {
             try {
+                //先从缓存中获取ServiceInfo
                 ServiceInfo serviceObj = serviceInfoMap.get(ServiceInfo.getKey(serviceName, clusters));
 
                 if (serviceObj == null) {
+                    // 更新服务信息
                     updateServiceNow(serviceName, clusters);
                     executor.schedule(this, DEFAULT_DELAY, TimeUnit.MILLISECONDS);
                     return;

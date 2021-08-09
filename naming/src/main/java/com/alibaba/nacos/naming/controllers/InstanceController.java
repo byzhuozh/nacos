@@ -190,10 +190,14 @@ public class InstanceController {
         return "ok";
     }
 
+    /**
+     * 服务拉取
+     */
     @GetMapping("/list")
     @Secured(parser = NamingResourceParser.class, action = ActionTypes.READ)
     public JSONObject list(HttpServletRequest request) throws Exception {
 
+        //获取参数并校验
         String namespaceId = WebUtils.optional(request, CommonParams.NAMESPACE_ID,
             Constants.DEFAULT_NAMESPACE_ID);
 
@@ -206,13 +210,12 @@ public class InstanceController {
         boolean isCheck = Boolean.parseBoolean(WebUtils.optional(request, "isCheck", "false"));
 
         String app = WebUtils.optional(request, "app", StringUtils.EMPTY);
-
         String tenant = WebUtils.optional(request, "tid", StringUtils.EMPTY);
 
         boolean healthyOnly = Boolean.parseBoolean(WebUtils.optional(request, "healthyOnly", "false"));
 
-        return doSrvIPXT(namespaceId, serviceName, agent, clusters, clientIP, udpPort, env, isCheck, app, tenant,
-            healthyOnly);
+        // 根据命名空间id, 服务名获取实例信息
+        return doSrvIPXT(namespaceId, serviceName, agent, clusters, clientIP, udpPort, env, isCheck, app, tenant, healthyOnly);
     }
 
     @GetMapping
@@ -442,6 +445,8 @@ public class InstanceController {
 
         ClientInfo clientInfo = new ClientInfo(agent);
         JSONObject result = new JSONObject();
+
+        //获取服务
         Service service = serviceManager.getService(namespaceId, serviceName);
 
         if (service == null) {
@@ -454,11 +459,13 @@ public class InstanceController {
             return result;
         }
 
+        //检查服务是否禁用
         checkIfDisabled(service);
 
         long cacheMillis = switchDomain.getDefaultCacheMillis();
 
         // now try to enable the push
+        // 判断upd端口与这个客户端，看看适不适合推送
         try {
             if (udpPort > 0 && pushService.canEnablePush(agent)) {
 
@@ -477,10 +484,11 @@ public class InstanceController {
         }
 
         List<Instance> srvedIPs;
-
+        // 获取所有永久和临时服务实例
         srvedIPs = service.srvIPs(Arrays.asList(StringUtils.split(clusters, ",")));
 
         // filter ips using selector:
+        // 选择器过滤服务
         if (service.getSelector() != null && StringUtils.isNotBlank(clientIP)) {
             srvedIPs = service.getSelector().select(clientIP, srvedIPs);
         }
@@ -510,6 +518,7 @@ public class InstanceController {
             return result;
         }
 
+        //分别保存健康与不健康的实例列表
         Map<Boolean, List<Instance>> ipMap = new HashMap<>(2);
         ipMap.put(Boolean.TRUE, new ArrayList<>());
         ipMap.put(Boolean.FALSE, new ArrayList<>());
@@ -579,6 +588,7 @@ public class InstanceController {
                 }
 
                 ipObj.put("ephemeral", instance.isEphemeral());
+                // 组装实例列表
                 hosts.add(ipObj);
 
             }
