@@ -88,6 +88,7 @@ public class DataSyncer {
             return;
         }
 
+        // 执行批量实例同步的定时任务
         GlobalExecutor.submitDataSync(() -> {
             // 1. check the server
             if (getServers() == null || getServers().isEmpty()) {
@@ -100,7 +101,9 @@ public class DataSyncer {
             if (Loggers.SRV_LOG.isDebugEnabled()) {
                 Loggers.SRV_LOG.debug("try to sync data for this keys {}.", keys);
             }
+
             // 2. get the datums by keys and check the datum is empty or not
+            //批量获取 key 代表的服务的实例集合
             Map<String, Datum> datumMap = dataStore.batchGet(keys);
             if (datumMap == null || datumMap.isEmpty()) {
                 // clear all flags of this task:
@@ -113,7 +116,10 @@ public class DataSyncer {
             byte[] data = serializer.serialize(datumMap);
 
             long timestamp = System.currentTimeMillis();
+            // 批量同步
             boolean success = NamingProxy.syncData(data, task.getTargetServer());
+
+            // 如果不成功，则重新添加同步任务
             if (!success) {
                 SyncTask syncTask = new SyncTask();
                 syncTask.setKeys(task.getKeys());

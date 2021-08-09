@@ -83,6 +83,7 @@ public class HealthCheckCommon {
                 }
 
                 for (Server server : sameSiteServers) {
+                    // 剔除本机服务
                     if (server.getKey().equals(NetUtils.localServer())) {
                         continue;
                     }
@@ -93,6 +94,7 @@ public class HealthCheckCommon {
                             server, JSON.toJSONString(list));
                     }
 
+                    // 向其他注册中心上报该服务的健康状态
                     HttpClient.HttpResult httpResult = HttpClient.httpPost("http://" + server.getKey()
                         + RunningConfig.getContextPath() + UtilsAndCommons.NACOS_NAMING_CONTEXT
                         + "/api/healthCheckResult", null, params);
@@ -139,6 +141,7 @@ public class HealthCheckCommon {
             if (!ip.isHealthy() || !ip.isMockValid()) {
                 if (ip.getOKCount().incrementAndGet() >= switchDomain.getCheckTimes()) {
                     if (distroMapper.responsible(cluster, ip)) {
+                        // 当前实例设置为健康状态
                         ip.setHealthy(true);
                         ip.setMockValid(true);
 

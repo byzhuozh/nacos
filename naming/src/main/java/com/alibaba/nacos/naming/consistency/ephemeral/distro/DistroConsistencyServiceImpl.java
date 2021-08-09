@@ -101,6 +101,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
 
     public volatile Notifier notifier = new Notifier();
 
+    //key：nameSpace + serviceName, 保存每个服务的监听器
     private Map<String, CopyOnWriteArrayList<RecordListener>> listeners = new ConcurrentHashMap<>();
 
     private Map<String, String> syncChecksumTasks = new ConcurrentHashMap<>(16);
@@ -150,10 +151,10 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
 
     @Override
     public void put(String key, Record value) throws NacosException {
-        //本地存储实例
+        //将实例信息更新到注册表
         onPut(key, value);
 
-        // 同步任务派发
+        //同步实例数据到集群其他节点
         taskDispatcher.addTask(key);
     }
 
@@ -177,7 +178,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
             datum.value = (Instances) value;
             datum.key = key;
             datum.timestamp.incrementAndGet();
-            // 保存命名数据
+            // 将实例信息更新到注册表
             dataStore.put(key, datum);
         }
 
@@ -187,7 +188,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
             return;
         }
 
-        // 添加通知任务，表示该服务 key 发生变更
+        // 添加通知任务，表示该 key 代表的服务发生变更
         notifier.addTask(key, ApplyAction.CHANGE);
     }
 
@@ -333,6 +334,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
 
     @Override
     public void listen(String key, RecordListener listener) throws NacosException {
+        //判断 key 对应的服务是否存在监听器
         if (!listeners.containsKey(key)) {
             listeners.put(key, new CopyOnWriteArrayList<>());
         }
@@ -341,6 +343,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
             return;
         }
 
+        // 添加监听器
         listeners.get(key).add(listener);
     }
 
@@ -423,7 +426,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
                         try {
                             // 通知数据已经改变
                             if (action == ApplyAction.CHANGE) {
-                                // 将 key 对应的实例传过去
+                                // 将 key 对应的实例集合传过去
                                 listener.onChange(datumKey, dataStore.get(datumKey).value);
                                 continue;
                             }

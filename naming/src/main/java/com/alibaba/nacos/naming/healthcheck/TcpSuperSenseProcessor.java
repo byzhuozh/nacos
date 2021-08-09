@@ -56,6 +56,7 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
     //key: 服务名:集群名:ip:port, val:
     private Map<String, BeatKey> keyMap = new ConcurrentHashMap<>();
 
+    // 心跳任务队列
     private BlockingQueue<Beat> taskQueue = new LinkedBlockingQueue<Beat>();
 
     /**
@@ -108,7 +109,7 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
 
     @Override
     public void process(HealthCheckTask task) {
-        // 获取所有临时的注册实例
+        // 获取该服务的集群下的所有临时的注册实例
         List<Instance> ips = task.getCluster().allIPs(false);
 
         if (CollectionUtils.isEmpty(ips)) {
@@ -154,7 +155,7 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
             tasks.add(new TaskProcessor(beat));
         } while (taskQueue.size() > 0 && tasks.size() < NIO_THREAD_COUNT * 64);
 
-        // 异步执行心跳任务
+        // 批量异步执行心跳任务
         for (Future<?> f : NIO_EXECUTOR.invokeAll(tasks)) {
             f.get();
         }
@@ -208,12 +209,15 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
                     return;
                 }
 
+                // 如果当前连接是已连接，则结束检查
                 if (key.isValid() && key.isConnectable()) {
                     //connected
                     channel.finishConnect();
+                    //结束检查
                     beat.finishCheck(true, false, System.currentTimeMillis() - beat.getTask().getStartTime(), "tcp:ok+");
                 }
 
+                //如果当前连接是可读的，则断开连接，意那味着 tcp 的心跳都是每次去新建连接的
                 if (key.isValid() && key.isReadable()) {
                     //disconnected
                     ByteBuffer buffer = ByteBuffer.allocate(128);

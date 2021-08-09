@@ -71,6 +71,8 @@ public class ClientBeatCheckTask implements Runnable {
     @Override
     public void run() {
         try {
+            // 当前服务不由本注册中心操作，则跳过
+            // 作用：避免多个注册中心同时对于同一个服务做心跳检测
             if (!getDistroMapper().responsible(service.getName())) {
                 return;
             }
@@ -121,7 +123,7 @@ public class ClientBeatCheckTask implements Runnable {
                 if (System.currentTimeMillis() - instance.getLastBeat() > instance.getIpDeleteTimeout()) {
                     // delete instance
                     Loggers.SRV_LOG.info("[AUTO-DELETE-IP] service: {}, ip: {}", service.getName(), JSON.toJSONString(instance));
-                    // 删除实例
+                    // 通知自己删除实例
                     deleteIP(instance);
                 }
             }

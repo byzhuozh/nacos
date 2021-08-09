@@ -267,10 +267,8 @@ public class InstanceController {
 
         result.put("clientBeatInterval", switchDomain.getClientBeatInterval());
         String serviceName = WebUtils.required(request, CommonParams.SERVICE_NAME);
-        String namespaceId = WebUtils.optional(request, CommonParams.NAMESPACE_ID,
-            Constants.DEFAULT_NAMESPACE_ID);
-        String clusterName = WebUtils.optional(request, CommonParams.CLUSTER_NAME,
-            UtilsAndCommons.DEFAULT_CLUSTER_NAME);
+        String namespaceId = WebUtils.optional(request, CommonParams.NAMESPACE_ID, Constants.DEFAULT_NAMESPACE_ID);
+        String clusterName = WebUtils.optional(request, CommonParams.CLUSTER_NAME, UtilsAndCommons.DEFAULT_CLUSTER_NAME);
         String ip = WebUtils.optional(request, "ip", StringUtils.EMPTY);
         int port = Integer.parseInt(WebUtils.optional(request, "port", "0"));
         String beat = WebUtils.optional(request, "beat", StringUtils.EMPTY);

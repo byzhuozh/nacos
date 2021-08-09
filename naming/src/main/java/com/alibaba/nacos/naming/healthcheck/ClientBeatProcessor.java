@@ -74,10 +74,13 @@ public class ClientBeatProcessor implements Runnable {
 
         for (Instance instance : instances) {
             if (instance.getIp().equals(ip) && instance.getPort() == port) {
+
                 if (Loggers.EVT_LOG.isDebugEnabled()) {
                     Loggers.EVT_LOG.debug("[CLIENT-BEAT] refresh beat: {}", rsInfo.toString());
                 }
+                // 更新实例的心跳信息
                 instance.setLastBeat(System.currentTimeMillis());
+
                 if (!instance.isMarked()) {
                     if (!instance.isHealthy()) {
                         instance.setHealthy(true);

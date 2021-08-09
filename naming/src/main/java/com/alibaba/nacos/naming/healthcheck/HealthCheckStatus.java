@@ -33,6 +33,7 @@ public class HealthCheckStatus {
     public AtomicInteger checkOKCount = new AtomicInteger(0);
     public long checkRT = -1L;
 
+    //实例的健康状态信息， key: 实例地址
     private static ConcurrentMap<String, HealthCheckStatus> statusMap = new ConcurrentHashMap<>();
 
     public static void reset(Instance instance) {

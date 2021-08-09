@@ -455,7 +455,7 @@ public class ServiceManager implements RecordListener<Service> {
                 service.getClusterMap().put(cluster.getName(), cluster);
             }
 
-            //服务命名规则校验
+            //集群命名规则校验
             service.validate();
 
             // 将创建的空的服务添加进本地缓存，并初始化
@@ -522,6 +522,7 @@ public class ServiceManager implements RecordListener<Service> {
             // 获取当前服务的所有 Instance 实例（将新的instance 与之前的instance进行合并，生成一个新的instance集合）
             List<Instance> instanceList = addIpAddresses(service, ephemeral, ips);
 
+            //构建该服务的实例集合
             Instances instances = new Instances();
             instances.setInstanceList(instanceList);
 
@@ -589,6 +590,7 @@ public class ServiceManager implements RecordListener<Service> {
             currentInstanceIds.add(instance.getInstanceId());
         }
 
+        //原服务的集群信息，转 map，key -> ip:port:clusterName
         Map<String, Instance> instanceMap;
         if (datum != null) {
             instanceMap = setValid(((Instances) datum.value).getInstanceList(), currentInstances);
@@ -596,10 +598,15 @@ public class ServiceManager implements RecordListener<Service> {
             instanceMap = new HashMap<>(ips.length);
         }
 
+        //处理新注册的实例
         for (Instance instance : ips) {
+            // 如果新注册的实例，是归属新的集群
             if (!service.getClusterMap().containsKey(instance.getClusterName())) {
+                // 创建该服务的新的集群信息
                 Cluster cluster = new Cluster(instance.getClusterName(), service);
+                // 初始化集群心跳任务
                 cluster.init();
+                // 保存该服务的集群信息
                 service.getClusterMap().put(instance.getClusterName(), cluster);
                 Loggers.SRV_LOG.warn("cluster: {} not found, ip: {}, will create new cluster with default configuration.",
                     instance.getClusterName(), instance.toJSON());

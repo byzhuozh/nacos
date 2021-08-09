@@ -60,6 +60,9 @@ public class DistroController {
     @Autowired
     private SwitchDomain switchDomain;
 
+    /**
+     *  注册中心之间，服务数据同步接口
+     */
     @PutMapping("/datum")
     public ResponseEntity onSyncDatum(@RequestBody Map<String, Datum<Instances>> dataMap) throws Exception {
 
@@ -76,6 +79,8 @@ public class DistroController {
                     && switchDomain.isDefaultInstanceEphemeral()) {
                     serviceManager.createEmptyService(namespaceId, serviceName, true);
                 }
+
+                // 将实例信息更新到本地注册表
                 consistencyService.onPut(entry.getKey(), entry.getValue().value);
             }
         }

@@ -59,7 +59,7 @@ public class TaskDispatcher {
     }
 
     public void addTask(String key) {
-        // 添加实例到变更列表
+        // 添加实例到变更列表 (taskSchedulerList 在 TaskDispatcher 初始化的时候就开始构建)
         taskSchedulerList.get(UtilsAndCommons.shakeUp(key, cpuCoreCount)).addTask(key);
     }
 
@@ -113,13 +113,17 @@ public class TaskDispatcher {
                     keys.add(key);
                     dataSize++;
 
+                    // 每次批量同步 1000 条 && 两次同步的时间间隔至少超过2s
                     if (dataSize == partitionConfig.getBatchSyncKeyCount() ||
                         (System.currentTimeMillis() - lastDispatchTime) > partitionConfig.getTaskDispatchPeriod()) {
 
                         for (Server member : dataSyncer.getServers()) {
+                            // 剔除本机服务
                             if (NetUtils.localServer().equals(member.getKey())) {
                                 continue;
                             }
+
+                            //提交服务同步任务
                             SyncTask syncTask = new SyncTask();
                             syncTask.setKeys(keys);
                             syncTask.setTargetServer(member.getKey());
@@ -130,6 +134,8 @@ public class TaskDispatcher {
 
                             dataSyncer.submit(syncTask, 0);
                         }
+
+                        //更新同步时间
                         lastDispatchTime = System.currentTimeMillis();
                         dataSize = 0;
                     }

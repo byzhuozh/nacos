@@ -38,7 +38,7 @@ import java.util.List;
 @Component("distroMapper")
 public class DistroMapper implements ServerChangeListener {
 
-    // ip:port
+    // ip:port, 标识健康的服务
     private List<String> healthyList = new ArrayList<>();
 
     public List<String> getHealthyList() {
@@ -67,7 +67,7 @@ public class DistroMapper implements ServerChangeListener {
     }
 
     public boolean responsible(String serviceName) {
-        // 是否是单机
+        // 是否是distro协议的服务或是单机启动
         if (!switchDomain.isDistroEnabled() || SystemUtils.STANDALONE_MODE) {
             return true;
         }
@@ -110,11 +110,14 @@ public class DistroMapper implements ServerChangeListener {
 
     }
 
+    /**
+     * 更新可达的服务地址
+     */
     @Override
     public void onChangeHealthyServerList(List<Server> latestReachableMembers) {
         List<String> newHealthyList = new ArrayList<>();
         for (Server server : latestReachableMembers) {
-            // ip:port
+            // server.getKey() -->  ip:port
             newHealthyList.add(server.getKey());
         }
         healthyList = newHealthyList;
