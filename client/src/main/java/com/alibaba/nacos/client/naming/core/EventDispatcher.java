@@ -36,10 +36,11 @@ public class EventDispatcher {
 
     private ExecutorService executor = null;
 
+    //缓存服务信息
     private BlockingQueue<ServiceInfo> changedServices = new LinkedBlockingQueue<ServiceInfo>();
 
-    private ConcurrentMap<String, List<EventListener>> observerMap
-        = new ConcurrentHashMap<String, List<EventListener>>();
+    // key: 服务名， val: 监听器
+    private ConcurrentMap<String, List<EventListener>> observerMap = new ConcurrentHashMap<String, List<EventListener>>();
 
     public EventDispatcher() {
 
@@ -53,6 +54,7 @@ public class EventDispatcher {
             }
         });
 
+        //触发监听器执行
         executor.execute(new Notifier());
     }
 
@@ -62,11 +64,13 @@ public class EventDispatcher {
         List<EventListener> observers = Collections.synchronizedList(new ArrayList<EventListener>());
         observers.add(listener);
 
+        // 添加监听器
         observers = observerMap.putIfAbsent(ServiceInfo.getKey(serviceInfo.getName(), clusters), observers);
         if (observers != null) {
             observers.add(listener);
         }
 
+        //服务状态改变
         serviceChanged(serviceInfo);
     }
 
@@ -115,6 +119,7 @@ public class EventDispatcher {
             while (true) {
                 ServiceInfo serviceInfo = null;
                 try {
+                    // 超时 5min poll 一次
                     serviceInfo = changedServices.poll(5, TimeUnit.MINUTES);
                 } catch (Exception ignore) {
                 }
@@ -128,7 +133,9 @@ public class EventDispatcher {
 
                     if (!CollectionUtils.isEmpty(listeners)) {
                         for (EventListener listener : listeners) {
+                            //获取服务的全部实例
                             List<Instance> hosts = Collections.unmodifiableList(serviceInfo.getHosts());
+                            //触发监听器执行
                             listener.onEvent(new NamingEvent(serviceInfo.getName(), serviceInfo.getGroupName(), serviceInfo.getClusters(), hosts));
                         }
                     }

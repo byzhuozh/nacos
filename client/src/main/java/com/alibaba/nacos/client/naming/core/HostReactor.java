@@ -184,6 +184,7 @@ public class HostReactor {
             serviceInfo.setJsonFromServer(json);
 
             if (newHosts.size() > 0 || remvHosts.size() > 0 || modHosts.size() > 0) {
+                //把该服务信息添加到服务变化列表中
                 eventDispatcher.serviceChanged(serviceInfo);
                 DiskCache.write(serviceInfo, cacheDir);
             }
@@ -192,9 +193,12 @@ public class HostReactor {
             changed = true;
             NAMING_LOGGER.info("init new ips(" + serviceInfo.ipCount() + ") service: " + serviceInfo.getKey() + " -> " + JSON
                 .toJSONString(serviceInfo.getHosts()));
+            //缓存服务
             serviceInfoMap.put(serviceInfo.getKey(), serviceInfo);
+            //把该服务信息添加到服务变化列表中
             eventDispatcher.serviceChanged(serviceInfo);
             serviceInfo.setJsonFromServer(json);
+            //把服务信息写入磁盘
             DiskCache.write(serviceInfo, cacheDir);
         }
 
@@ -239,7 +243,7 @@ public class HostReactor {
             //初始化服务
             serviceObj = new ServiceInfo(serviceName, clusters);
 
-            //缓存服务
+            //先缓存服务
             serviceInfoMap.put(serviceObj.getKey(), serviceObj);
 
             updatingMap.put(serviceName, new Object());
@@ -261,7 +265,7 @@ public class HostReactor {
             }
         }
 
-        //添加定时任务
+        //添加定时任务，
         scheduleUpdateIfAbsent(serviceName, clusters);
 
         return serviceInfoMap.get(serviceObj.getKey());
@@ -291,7 +295,7 @@ public class HostReactor {
         ServiceInfo oldService = getServiceInfo0(serviceName, clusters);
         try {
 
-            //拉取服务信息
+            //拉取服务信息, 同时上报 udp 端口，接收服务端的服务通知
             String result = serverProxy.queryList(serviceName, clusters, pushReceiver.getUDPPort(), false);
 
             if (StringUtils.isNotEmpty(result)) {
@@ -349,6 +353,7 @@ public class HostReactor {
                     refreshOnly(serviceName, clusters);
                 }
 
+                // 更新时间
                 lastRefTime = serviceObj.getLastRefTime();
 
                 if (!eventDispatcher.isSubscribed(serviceName, clusters) &&
@@ -358,6 +363,7 @@ public class HostReactor {
                     return;
                 }
 
+                //默认 1s 后执行
                 executor.schedule(this, serviceObj.getCacheMillis(), TimeUnit.MILLISECONDS);
 
 

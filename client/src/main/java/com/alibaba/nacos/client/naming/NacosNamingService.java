@@ -64,16 +64,21 @@ public class NacosNamingService implements NamingService {
     //注册中心地址
     private String serverList;
 
+    // 缓存目录
     private String cacheDir;
 
+    // 日志文件名称
     private String logName;
 
+    // 用于客户端服务的订阅，以及从服务端更新服务信息
     private HostReactor hostReactor;
 
+    // 用于维持与服务器之间的心跳通信，上报客户端注册到服务端的服务信息;
     private BeatReactor beatReactor;
 
     private EventDispatcher eventDispatcher;
 
+    // 服务端的代理，用于客户端与服务端的通信;
     private NamingProxy serverProxy;
 
     public NacosNamingService(String serverList) {
@@ -307,6 +312,7 @@ public class NacosNamingService implements NamingService {
         ServiceInfo serviceInfo;
         // 默认订阅服务
         if (subscribe) {
+            // 先从缓存中判断是否存在该服务
             serviceInfo = hostReactor.getServiceInfo(NamingUtils.getGroupedName(serviceName, groupName), StringUtils.join(clusters, ","));
         } else {
             // 从注册中心直接拉取服务信息

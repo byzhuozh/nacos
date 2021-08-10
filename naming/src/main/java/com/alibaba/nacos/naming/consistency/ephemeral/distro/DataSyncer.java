@@ -67,12 +67,12 @@ public class DataSyncer {
     }
 
     public void submit(SyncTask task, long delay) {
-
-        // If it's a new task:
+        // 重试次数为0，说是新的同步任务
         if (task.getRetryCount() == 0) {
             Iterator<String> iterator = task.getKeys().iterator();
             while (iterator.hasNext()) {
                 String key = iterator.next();
+                // 缓存同步的服务
                 if (StringUtils.isNotBlank(taskMap.putIfAbsent(buildKey(key, task.getTargetServer()), key))) {
                     // associated key already exist:
                     if (Loggers.DISTRO.isDebugEnabled()) {
@@ -113,6 +113,7 @@ public class DataSyncer {
                 return;
             }
 
+            // 序列化服务的实例数据
             byte[] data = serializer.serialize(datumMap);
 
             long timestamp = System.currentTimeMillis();
@@ -126,9 +127,11 @@ public class DataSyncer {
                 syncTask.setRetryCount(task.getRetryCount() + 1);
                 syncTask.setLastExecuteTime(timestamp);
                 syncTask.setTargetServer(task.getTargetServer());
+                // 重试
                 retrySync(syncTask);
             } else {
                 // clear all flags of this task:
+                // 清除任务标记
                 for (String key : task.getKeys()) {
                     taskMap.remove(buildKey(key, task.getTargetServer()));
                 }
@@ -157,6 +160,7 @@ public class DataSyncer {
     }
 
     public void startTimedSync() {
+        //每5秒一次
         GlobalExecutor.schedulePartitionDataTimedSync(new TimedSync());
     }
 
@@ -166,14 +170,15 @@ public class DataSyncer {
         public void run() {
 
             try {
-
                 if (Loggers.DISTRO.isDebugEnabled()) {
                     Loggers.DISTRO.debug("server list is: {}", getServers());
                 }
 
                 // send local timestamps to other servers:
+                // key: 服务名。 val: 校验和
                 Map<String, String> keyChecksums = new HashMap<>(64);
                 for (String key : dataStore.keys()) {
+                    // 只同步自己负责的那部分数据
                     if (!distroMapper.responsible(KeyBuilder.getServiceName(key))) {
                         continue;
                     }
@@ -197,6 +202,7 @@ public class DataSyncer {
                     if (NetUtils.localServer().equals(member.getKey())) {
                         continue;
                     }
+                    // 校验数据一致性
                     NamingProxy.syncCheckSums(keyChecksums, member.getKey());
                 }
             } catch (Exception e) {

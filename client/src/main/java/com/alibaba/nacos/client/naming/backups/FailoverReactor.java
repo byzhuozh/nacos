@@ -35,6 +35,8 @@ import static com.alibaba.nacos.client.utils.LogUtils.NAMING_LOGGER;
 
 /**
  * @author nkorange
+ *
+ * 故障转移
  */
 public class FailoverReactor {
 

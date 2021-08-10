@@ -30,6 +30,8 @@ import static com.alibaba.nacos.client.utils.LogUtils.NAMING_LOGGER;
 
 /**
  * @author xuanyin
+ *
+ * 接收Nacos服务端的推送
  */
 public class PushReceiver implements Runnable {
 
@@ -44,6 +46,7 @@ public class PushReceiver implements Runnable {
     public PushReceiver(HostReactor hostReactor) {
         try {
             this.hostReactor = hostReactor;
+            // 初始化 udp 客户端
             udpSocket = new DatagramSocket();
 
             executorService = new ScheduledThreadPoolExecutor(1, new ThreadFactory() {
@@ -70,16 +73,20 @@ public class PushReceiver implements Runnable {
                 byte[] buffer = new byte[UDP_MSS];
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
 
+                // 接收请求
                 udpSocket.receive(packet);
 
+                // 解析
                 String json = new String(IoUtils.tryDecompress(packet.getData()), "UTF-8").trim();
                 NAMING_LOGGER.info("received push data: " + json + " from " + packet.getAddress().toString());
 
+                //解析包的类型
                 PushPacket pushPacket = JSON.parseObject(json, PushPacket.class);
+
                 String ack;
                 if ("dom".equals(pushPacket.type) || "service".equals(pushPacket.type)) {
+                    // 服务更新处理
                     hostReactor.processServiceJSON(pushPacket.data);
-
                     // send ack to server
                     ack = "{\"type\": \"push-ack\""
                         + ", \"lastRefTime\":\"" + pushPacket.lastRefTime
@@ -98,8 +105,10 @@ public class PushReceiver implements Runnable {
                         + "\", \"data\":" + "\"\"}";
                 }
 
+                // 发送 ack 给 nacos 服务端
                 udpSocket.send(new DatagramPacket(ack.getBytes(Charset.forName("UTF-8")),
                     ack.getBytes(Charset.forName("UTF-8")).length, packet.getSocketAddress()));
+
             } catch (Exception e) {
                 NAMING_LOGGER.error("[NA] error while receiving push data", e);
             }

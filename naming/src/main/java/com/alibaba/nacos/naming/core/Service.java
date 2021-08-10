@@ -174,7 +174,7 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
         // 更新 instance
         updateIPs(value.getInstanceList(), KeyBuilder.matchEphemeralInstanceListKey(key));
 
-        // 更新服务的校验和
+        // 更新该服务的校验和
         recalculateChecksum();
     }
 
@@ -250,6 +250,7 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
 
         //更新最后修改时间
         setLastModifiedMillis(System.currentTimeMillis());
+
         //获取 pushService ，通知服务改变
         getPushService().serviceChanged(this);
 

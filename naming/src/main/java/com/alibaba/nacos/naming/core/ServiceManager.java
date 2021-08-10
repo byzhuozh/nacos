@@ -101,6 +101,7 @@ public class ServiceManager implements RecordListener<Service> {
 
         try {
             Loggers.SRV_LOG.info("listen for service meta change");
+            // 添加默认监听器
             consistencyService.listen(KeyBuilder.SERVICE_META_KEY_PREFIX, this);
         } catch (NacosException e) {
             Loggers.SRV_LOG.error("listen for service meta change failed!");

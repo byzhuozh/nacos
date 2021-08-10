@@ -113,7 +113,7 @@ public class TaskDispatcher {
                     keys.add(key);
                     dataSize++;
 
-                    // 每次批量同步 1000 条 && 两次同步的时间间隔至少超过2s
+                    // 每次批量同步 1000 条 或是 两次同步的时间间隔至少超过2s
                     if (dataSize == partitionConfig.getBatchSyncKeyCount() ||
                         (System.currentTimeMillis() - lastDispatchTime) > partitionConfig.getTaskDispatchPeriod()) {
 
@@ -123,7 +123,7 @@ public class TaskDispatcher {
                                 continue;
                             }
 
-                            //提交服务同步任务
+                            // 构建同步任务
                             SyncTask syncTask = new SyncTask();
                             syncTask.setKeys(keys);
                             syncTask.setTargetServer(member.getKey());
@@ -132,6 +132,7 @@ public class TaskDispatcher {
                                 Loggers.DISTRO.debug("add sync task: {}", JSON.toJSONString(syncTask));
                             }
 
+                            // 提交数据同步任务
                             dataSyncer.submit(syncTask, 0);
                         }
 

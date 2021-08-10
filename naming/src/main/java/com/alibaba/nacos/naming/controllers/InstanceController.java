@@ -205,6 +205,7 @@ public class InstanceController {
         String agent = WebUtils.getUserAgent(request);
         String clusters = WebUtils.optional(request, "clusters", StringUtils.EMPTY);
         String clientIP = WebUtils.optional(request, "clientIP", StringUtils.EMPTY);
+        //上报 udp 端口, 推送会用到
         Integer udpPort = Integer.parseInt(WebUtils.optional(request, "udpPort", "0"));
         String env = WebUtils.optional(request, "env", StringUtils.EMPTY);
         boolean isCheck = Boolean.parseBoolean(WebUtils.optional(request, "isCheck", "false"));
@@ -442,7 +443,7 @@ public class InstanceController {
                                 int udpPort,
                                 String env, boolean isCheck, String app, String tid, boolean healthyOnly)
         throws Exception {
-
+        //创建客户端信息
         ClientInfo clientInfo = new ClientInfo(agent);
         JSONObject result = new JSONObject();
 
@@ -465,10 +466,10 @@ public class InstanceController {
         long cacheMillis = switchDomain.getDefaultCacheMillis();
 
         // now try to enable the push
-        // 判断upd端口与这个客户端，看看适不适合推送
+        // 判断 upd 端口与客户端类型，是否允许使用 udp 通知
         try {
             if (udpPort > 0 && pushService.canEnablePush(agent)) {
-
+                // 添加要推送的客户端信息
                 pushService.addClient(namespaceId, serviceName,
                     clusters,
                     agent,
@@ -488,7 +489,7 @@ public class InstanceController {
         srvedIPs = service.srvIPs(Arrays.asList(StringUtils.split(clusters, ",")));
 
         // filter ips using selector:
-        // 选择器过滤服务
+        // 客户端IP过滤
         if (service.getSelector() != null && StringUtils.isNotBlank(clientIP)) {
             srvedIPs = service.getSelector().select(clientIP, srvedIPs);
         }
@@ -523,6 +524,7 @@ public class InstanceController {
         ipMap.put(Boolean.TRUE, new ArrayList<>());
         ipMap.put(Boolean.FALSE, new ArrayList<>());
 
+        // 区分健康状况的实例
         for (Instance ip : srvedIPs) {
             ipMap.get(ip.isHealthy()).add(ip);
         }
@@ -531,10 +533,11 @@ public class InstanceController {
             result.put("reachProtectThreshold", false);
         }
 
+        // 保护模式阈值，默认是0，不开启
         double threshold = service.getProtectThreshold();
 
+        // 健康的实例数小于阈值的话就会开启保护模式，会把不健康的也实例也下发
         if ((float) ipMap.get(Boolean.TRUE).size() / srvedIPs.size() <= threshold) {
-
             Loggers.SRV_LOG.warn("protect threshold reached, return all ips, service: {}", serviceName);
             if (isCheck) {
                 result.put("reachProtectThreshold", true);
@@ -553,6 +556,7 @@ public class InstanceController {
 
         JSONArray hosts = new JSONArray();
 
+        // 封装实例
         for (Map.Entry<Boolean, List<Instance>> entry : ipMap.entrySet()) {
             List<Instance> ips = entry.getValue();
 

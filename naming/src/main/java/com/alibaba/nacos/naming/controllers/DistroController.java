@@ -87,6 +87,9 @@ public class DistroController {
         return ResponseEntity.ok("ok");
     }
 
+    /**
+     * 注册中心节点数据校验
+     */
     @PutMapping("/checksum")
     public ResponseEntity syncChecksum(@RequestParam String source, @RequestBody Map<String, String> dataMap) {
 
