@@ -128,6 +128,7 @@ public class RaftController {
         JSONObject json = JSON.parseObject(value);
 
         String key = json.getString("key");
+        //添加实例
         if (KeyBuilder.matchInstanceListKey(key)) {
             raftConsistencyService.put(key, JSON.parseObject(json.getString("value"), Instances.class));
             return "ok";

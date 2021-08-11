@@ -24,8 +24,8 @@ public class ServiceProvider {
 
         NamingService naming = NamingFactory.createNamingService(properties);
 
-        naming.registerInstance(Constants.SERVICE_NAME, Constants.IP_1, Constants.PORT_1, Constants.CLUSTER_NAME_1);
-//        naming.registerInstance(Constants.SERVICE_NAME, Constants.IP_2, Constants.PORT_2, Constants.CLUSTER_NAME_2);
+//        naming.registerInstance(Constants.SERVICE_NAME, Constants.IP_1, Constants.PORT_1, Constants.CLUSTER_NAME_1);
+        naming.registerInstance(Constants.SERVICE_NAME, Constants.IP_2, Constants.PORT_2, Constants.CLUSTER_NAME_2);
 //        naming.registerInstance(Constants.SERVICE_NAME, Constants.IP_3, Constants.PORT_3, Constants.CLUSTER_NAME_3);
         List<Instance> instances = naming.getAllInstances(Constants.SERVICE_NAME);
         System.out.println("getAllInstances after registered\ninstance size="

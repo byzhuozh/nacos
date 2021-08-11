@@ -48,6 +48,7 @@ public class ServerListManager {
 
     private List<ServerChangeListener> listeners = new ArrayList<>();
 
+    // nacos 集群中的服务地址列表
     private List<Server> servers = new ArrayList<>();
 
     private List<Server> healthyServers = new ArrayList<>();
@@ -72,7 +73,7 @@ public class ServerListManager {
 
     @PostConstruct
     public void init() {
-        //
+        //每隔 5s 更新一次集群中各个服务的地址
         GlobalExecutor.registerServerListUpdater(new ServerListUpdater());
         GlobalExecutor.registerServerStatusReporter(new ServerStatusReporter(), 2000);
     }
@@ -91,6 +92,7 @@ public class ServerListManager {
 
         List<String> serverList = new ArrayList<>();
         try {
+            //读取集群配置，获取集群各个地址列表
             serverList = readClusterConf();
         } catch (Exception e) {
             Loggers.SRV_LOG.warn("failed to get config: " + CLUSTER_CONF_FILE_PATH, e);
@@ -156,6 +158,7 @@ public class ServerListManager {
             @Override
             public void run() {
                 for (ServerChangeListener listener : listeners) {
+                    // 实际执行的是 RaftPeerSet
                     listener.onChangeServerList(servers);
                     listener.onChangeHealthyServerList(healthyServers);
                 }
@@ -287,6 +290,7 @@ public class ServerListManager {
         @Override
         public void run() {
             try {
+                // 读取 cluster.conf 配置，解析 nacos 集群地址
                 List<Server> refreshedServers = refreshServerList();
                 List<Server> oldServers = servers;
 
@@ -297,6 +301,7 @@ public class ServerListManager {
 
                 boolean changed = false;
 
+                //解析出新加的地址
                 List<Server> newServers = (List<Server>) CollectionUtils.subtract(refreshedServers, oldServers);
                 if (CollectionUtils.isNotEmpty(newServers)) {
                     servers.addAll(newServers);
@@ -304,6 +309,7 @@ public class ServerListManager {
                     Loggers.RAFT.info("server list is updated, new: {} servers: {}", newServers.size(), newServers);
                 }
 
+                //判断是否有删除地址
                 List<Server> deadServers = (List<Server>) CollectionUtils.subtract(oldServers, refreshedServers);
                 if (CollectionUtils.isNotEmpty(deadServers)) {
                     servers.removeAll(deadServers);
@@ -312,6 +318,7 @@ public class ServerListManager {
                 }
 
                 if (changed) {
+                    //触发监听器执行
                     notifyListeners();
                 }
 

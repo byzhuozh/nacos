@@ -26,17 +26,22 @@ import java.util.concurrent.atomic.AtomicLong;
  * @author nacos
  */
 public class RaftPeer {
-
+    //当前地址
     public String ip;
 
+    //偷票方的IP
     public String voteFor;
 
+    //任期
     public AtomicLong term = new AtomicLong(0L);
 
+    //选举超时时间
     public volatile long leaderDueMs = RandomUtils.nextLong(0, GlobalExecutor.LEADER_TIMEOUT_MS);
 
+    //心跳超时时间
     public volatile long heartbeatDueMs = RandomUtils.nextLong(0, GlobalExecutor.HEARTBEAT_INTERVAL_MS);
 
+    //角色状态
     public State state = State.FOLLOWER;
 
     public void resetLeaderDue() {
@@ -50,14 +55,17 @@ public class RaftPeer {
     public enum State {
         /**
          * Leader of the cluster, only one leader stands in a cluster
+         * 领导者
          */
         LEADER,
         /**
          * Follower of the cluster, report to and copy from leader
+         * 跟随者
          */
         FOLLOWER,
         /**
          * Candidate leader to be elected
+         * 候选者
          */
         CANDIDATE
     }

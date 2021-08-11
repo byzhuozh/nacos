@@ -308,7 +308,9 @@ public class LongPollingService extends AbstractEventListener {
             try {
                 ConfigService.getContentBetaMd5(groupKey);
                 for (Iterator<ClientLongPolling> iter = allSubs.iterator(); iter.hasNext(); ) {
+                    //轮询在长轮询中的客户端
                     ClientLongPolling clientSub = iter.next();
+
                     if (clientSub.clientMd5Map.containsKey(groupKey)) {
                         // 如果beta发布且不在beta列表直接跳过
                         if (isBeta && !betaIps.contains(clientSub.ip)) {
@@ -322,12 +324,14 @@ public class LongPollingService extends AbstractEventListener {
 
                         getRetainIps().put(clientSub.ip, System.currentTimeMillis());
                         iter.remove(); // 删除订阅关系
+
                         LogUtil.clientLog.info("{}|{}|{}|{}|{}|{}|{}",
                             (System.currentTimeMillis() - changeTime),
                             "in-advance",
                             RequestUtil.getRemoteIp((HttpServletRequest)clientSub.asyncContext.getRequest()),
                             "polling",
                             clientSub.clientMd5Map.size(), clientSub.probeRequestSize, groupKey);
+
                         clientSub.sendResponse(Arrays.asList(groupKey));
                     }
                 }

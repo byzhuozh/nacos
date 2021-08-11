@@ -59,6 +59,7 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
 
     private RaftPeer leader = null;
 
+    //选票信息，key: ip
     private Map<String, RaftPeer> peers = new HashMap<>();
 
     private Set<String> sites = new HashSet<>();
@@ -77,6 +78,7 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
 
     @PostConstruct
     public void init() {
+        //添加监听器
         serverListManager.listen(this);
     }
 
@@ -146,24 +148,29 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
         SortedBag ips = new TreeBag();
         int maxApproveCount = 0;
         String maxApprovePeer = null;
+
         for (RaftPeer peer : peers.values()) {
             if (StringUtils.isEmpty(peer.voteFor)) {
                 continue;
             }
 
             ips.add(peer.voteFor);
+            //判断每个端的最多投票信息
             if (ips.getCount(peer.voteFor) > maxApproveCount) {
                 maxApproveCount = ips.getCount(peer.voteFor);
                 maxApprovePeer = peer.voteFor;
             }
         }
 
+        //超过半数
         if (maxApproveCount >= majorityCount()) {
             RaftPeer peer = peers.get(maxApprovePeer);
+            //更新为 leader
             peer.state = RaftPeer.State.LEADER;
 
             if (!Objects.equals(leader, peer)) {
                 leader = peer;
+                //发布选举结束事件
                 applicationContext.publishEvent(new LeaderElectFinishedEvent(this, leader));
                 Loggers.RAFT.info("{} has become the LEADER", leader.ip);
             }
@@ -174,7 +181,9 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
 
     public RaftPeer makeLeader(RaftPeer candidate) {
         if (!Objects.equals(leader, candidate)) {
+            // 更新 leader
             leader = candidate;
+
             applicationContext.publishEvent(new MakeLeaderEvent(this, leader));
             Loggers.RAFT.info("{} has become the LEADER, local: {}, leader: {}",
                 leader.ip, JSON.toJSONString(local()), JSON.toJSONString(leader));
@@ -182,6 +191,8 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
 
         for (final RaftPeer peer : peers.values()) {
             Map<String, String> params = new HashMap<>(1);
+            //跟新集群节点的状态
+            //重新更新 peers 中的 leader 的状态
             if (!Objects.equals(peer, candidate) && peer.state == RaftPeer.State.LEADER) {
                 try {
                     String url = RaftCore.buildURL(peer.ip, RaftCore.API_GET_PEER);
@@ -191,6 +202,7 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
                             if (response.getStatusCode() != HttpURLConnection.HTTP_OK) {
                                 Loggers.RAFT.error("[NACOS-RAFT] get peer failed: {}, peer: {}",
                                     response.getResponseBody(), peer.ip);
+                                //更新为 follow 状态
                                 peer.state = RaftPeer.State.FOLLOWER;
                                 return 1;
                             }
@@ -219,6 +231,7 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
             peers.put(localPeer.ip, localPeer);
             return localPeer;
         }
+
         if (peer == null) {
             throw new IllegalStateException("unable to find local peer: " + NetUtils.localServer() + ", all peers: "
                 + Arrays.toString(peers.keySet().toArray()));
@@ -281,6 +294,8 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
         // replace raft peer set:
         peers = tmpPeers;
 
+        //修改状态，说明当前集群已经准备好了，可以进入选举
+        // 在 RaftCore.MasterElection 中会判断 ready 的状态
         if (RunningConfig.getServerPort() > 0) {
             ready = true;
         }

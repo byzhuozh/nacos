@@ -7,7 +7,7 @@ public interface Constants {
 
 //    String NAMESPACE = "nacos.naming";
 
-    String NAMESPACE = "60201bf3-11f1-4f72-97db-50631de1b0c6";
+    String NAMESPACE = "550a0145-d8aa-450d-a7e5-c3eb456830e5";
 
     String SERVICE_NAME = "byzhuozh-provirder";
 

@@ -60,10 +60,11 @@ import static com.alibaba.nacos.core.utils.SystemUtils.STANDALONE_MODE;
 @Component
 public class RaftCore {
 
+    // 进行投票请求
     public static final String API_VOTE = UtilsAndCommons.NACOS_NAMING_CONTEXT + "/raft/vote";
-
+    // Leader向Follower发送心跳信息
     public static final String API_BEAT = UtilsAndCommons.NACOS_NAMING_CONTEXT + "/raft/beat";
-
+    //
     public static final String API_PUB = UtilsAndCommons.NACOS_NAMING_CONTEXT + "/raft/datum";
 
     public static final String API_DEL = UtilsAndCommons.NACOS_NAMING_CONTEXT + "/raft/datum";
@@ -74,6 +75,7 @@ public class RaftCore {
 
     public static final String API_ON_DEL = UtilsAndCommons.NACOS_NAMING_CONTEXT + "/raft/datum/commit";
 
+    // 获取该节点的RaftPeer信息
     public static final String API_GET_PEER = UtilsAndCommons.NACOS_NAMING_CONTEXT + "/raft/peer";
 
     private ScheduledExecutorService executor = new ScheduledThreadPoolExecutor(1, new ThreadFactory() {
@@ -94,6 +96,7 @@ public class RaftCore {
 
     private volatile Map<String, List<RecordListener>> listeners = new ConcurrentHashMap<>();
 
+    //服务实例数据缓存, key：服务名
     private volatile ConcurrentMap<String, Datum> datums = new ConcurrentHashMap<>();
 
     @Autowired
@@ -120,12 +123,14 @@ public class RaftCore {
 
         Loggers.RAFT.info("initializing Raft sub-system");
 
+        // 服务变化通知
         executor.submit(notifier);
 
         long start = System.currentTimeMillis();
 
         raftStore.loadDatums(notifier, datums);
 
+        // 设置任期
         setTerm(NumberUtils.toLong(raftStore.loadMeta().getProperty("term"), 0L));
 
         Loggers.RAFT.info("cache loaded, datum count: {}, current term: {}", datums.size(), peers.getTerm());
@@ -141,7 +146,9 @@ public class RaftCore {
 
         Loggers.RAFT.info("finish to load data from disk, cost: {} ms.", (System.currentTimeMillis() - start));
 
+        //注册选举任务(每 500ms 进行执行一次)
         GlobalExecutor.registerMasterElection(new MasterElection());
+        //注册心跳任务(每 500ms 进行执行一次)
         GlobalExecutor.registerHeartbeat(new HeartBeat());
 
         Loggers.RAFT.info("timer started: leader timeout ms: {}, heart-beat timeout ms: {}",
@@ -153,7 +160,7 @@ public class RaftCore {
     }
 
     public void signalPublish(String key, Record value) throws Exception {
-
+        // 如果不是 leader, 则转发给 leader 处理
         if (!isLeader()) {
             JSONObject params = new JSONObject();
             params.put("key", key);
@@ -161,13 +168,16 @@ public class RaftCore {
             Map<String, String> parameters = new HashMap<>(1);
             parameters.put("key", key);
 
+            //获取 leader ip, 进行数据转发
             raftProxy.proxyPostLarge(getLeader().ip, API_PUB, params.toJSONString(), parameters);
             return;
         }
 
-        try {
+        try {// 走到这里：当前是 leader 角色
+            // 加锁操作
             OPERATE_LOCK.lock();
             long start = System.currentTimeMillis();
+
             final Datum datum = new Datum();
             datum.key = key;
             datum.value = value;
@@ -177,29 +187,40 @@ public class RaftCore {
                 datum.timestamp.set(getDatum(key).timestamp.incrementAndGet());
             }
 
+            // 构建发送的数据包
             JSONObject json = new JSONObject();
             json.put("datum", datum);
             json.put("source", peers.local());
 
+            //把服务写入磁盘，并发布服务变动事件  peers 是所有节点集合. peers.local 获取本机
             onPublish(datum, peers.local());
 
             final String content = JSON.toJSONString(json);
 
+            // 过半同步成功才会响应，也就是说put操作需要过半同步成功，强一致性 CP模型
+            // 只要过半的结点数
             final CountDownLatch latch = new CountDownLatch(peers.majorityCount());
+
+            //数据同步到其他端，进行提交
             for (final String server : peers.allServersIncludeMyself()) {
+                // 如果当前服务是 leader，则跳过
                 if (isLeader(server)) {
                     latch.countDown();
                     continue;
                 }
+
                 final String url = buildURL(server, API_ON_PUB);
+                //异步发送
                 HttpClient.asyncHttpPostLarge(url, Arrays.asList("key=" + key), content, new AsyncCompletionHandler<Integer>() {
                     @Override
                     public Integer onCompleted(Response response) throws Exception {
+                        //发送回调
                         if (response.getStatusCode() != HttpURLConnection.HTTP_OK) {
                             Loggers.RAFT.warn("[RAFT] failed to publish data to peer, datumId={}, peer={}, http code={}",
                                 datum.key, server, response.getStatusCode());
                             return 1;
                         }
+                        // 处理完成coundDown
                         latch.countDown();
                         return 0;
                     }
@@ -212,6 +233,9 @@ public class RaftCore {
 
             }
 
+            //等待半数完成, 如果5s 没有释放，则抛出异常
+            //但是这里有个bug：往其他节点写数据出现问题时，这里跑了异常，但是主节点却保存服务成功了！！理论上主节点应该同时保存失败的！
+            //新版本使用了jRaft协议来替换，使用两段式提交的方式避免了这个bug
             if (!latch.await(UtilsAndCommons.RAFT_PUBLISH_TIMEOUT, TimeUnit.MILLISECONDS)) {
                 // only majority servers return success can we consider this update success
                 Loggers.RAFT.error("data publish failed, caused failed to notify majority, key={}", key);
@@ -221,6 +245,7 @@ public class RaftCore {
             long end = System.currentTimeMillis();
             Loggers.RAFT.info("signalPublish cost {} ms, key: {}", (end - start), key);
         } finally {
+            // 解锁
             OPERATE_LOCK.unlock();
         }
     }
@@ -277,6 +302,7 @@ public class RaftCore {
             throw new IllegalStateException("received empty datum");
         }
 
+        //不是leader不能干这个事
         if (!peers.isLeader(source.ip)) {
             Loggers.RAFT.warn("peer {} tried to publish data but wasn't leader, leader: {}",
                 JSON.toJSONString(source), JSON.toJSONString(getLeader()));
@@ -284,6 +310,7 @@ public class RaftCore {
                 "data but wasn't leader");
         }
 
+        //过时了
         if (source.term.get() < local.term.get()) {
             Loggers.RAFT.warn("out of date publish, pub-term: {}, cur-term: {}",
                 JSON.toJSONString(source), JSON.toJSONString(local));
@@ -291,6 +318,7 @@ public class RaftCore {
                 + source.term.get() + ", cur-term: " + local.term.get());
         }
 
+        //重置选举超时时间
         local.resetLeaderDue();
 
         // if data should be persisted, usually this is true:
@@ -298,6 +326,7 @@ public class RaftCore {
             raftStore.write(datum);
         }
 
+        //实例数据存储
         datums.put(datum.key, datum);
 
         if (isLeader()) {
@@ -362,11 +391,13 @@ public class RaftCore {
         @Override
         public void run() {
             try {
-
+                // 当前 raft 集群是否准备就绪
+                // 在 RaftPeerSet.onChangeServerList 中赋值
                 if (!peers.isReady()) {
                     return;
                 }
 
+                //获取当前节点
                 RaftPeer local = peers.local();
                 local.leaderDueMs -= GlobalExecutor.TICK_PERIOD_MS;
 
@@ -375,9 +406,13 @@ public class RaftCore {
                 }
 
                 // reset timeout
+                // 重置选举的超时时间
                 local.resetLeaderDue();
+
+                // 5s 的心跳超时时间
                 local.resetHeartbeatDue();
 
+                // 发送选票
                 sendVote();
             } catch (Exception e) {
                 Loggers.RAFT.warn("[RAFT] error while master election {}", e);
@@ -388,17 +423,21 @@ public class RaftCore {
         public void sendVote() {
 
             RaftPeer local = peers.get(NetUtils.localServer());
-            Loggers.RAFT.info("leader timeout, start voting,leader: {}, term: {}",
-                JSON.toJSONString(getLeader()), local.term);
+            Loggers.RAFT.info("leader timeout, start voting,leader: {}, term: {}", JSON.toJSONString(getLeader()), local.term);
 
+            // 重置所有的投票信息
             peers.reset();
 
+            //任期 + 1
             local.term.incrementAndGet();
             local.voteFor = local.ip;
+            //当前身份为候选人
             local.state = RaftPeer.State.CANDIDATE;
 
+            //选票参数
             Map<String, String> params = new HashMap<>(1);
             params.put("vote", JSON.toJSONString(local));
+
             for (final String server : peers.allServersWithoutMySelf()) {
                 final String url = buildURL(server, API_VOTE);
                 try {
@@ -410,6 +449,7 @@ public class RaftCore {
                                 return 1;
                             }
 
+                            //解析对方的投票信息
                             RaftPeer peer = JSON.parseObject(response.getResponseBody(), RaftPeer.class);
 
                             Loggers.RAFT.info("received approve from peer: {}", JSON.toJSONString(peer));
@@ -431,21 +471,27 @@ public class RaftCore {
             throw new IllegalStateException("can not find peer: " + remote.ip);
         }
 
+        //当前的 raft 节点
         RaftPeer local = peers.get(NetUtils.localServer());
+        //投票人的任期小与当前节点，则投给当前节点
         if (remote.term.get() <= local.term.get()) {
             String msg = "received illegitimate vote" +
                 ", voter-term:" + remote.term + ", votee-term:" + local.term;
 
             Loggers.RAFT.info(msg);
+            //初次选举则存在空的情况，不为空，则说明历史投票过
             if (StringUtils.isEmpty(local.voteFor)) {
+                //更新投票人为自己
                 local.voteFor = local.ip;
             }
 
             return local;
         }
 
+        //重置选举时间(放弃这一轮的选举)，主要是避免选举冲突
         local.resetLeaderDue();
 
+        //更新选票信息
         local.state = RaftPeer.State.FOLLOWER;
         local.voteFor = remote.ip;
         local.term.set(remote.term.get());
@@ -459,7 +505,8 @@ public class RaftCore {
         @Override
         public void run() {
             try {
-
+                // 当前 raft 集群是否准备就绪
+                // 在 RaftPeerSet.onChangeServerList 中赋值
                 if (!peers.isReady()) {
                     return;
                 }
@@ -470,8 +517,10 @@ public class RaftCore {
                     return;
                 }
 
+                // 重置 5s 的心跳超时时间
                 local.resetHeartbeatDue();
 
+                //发送心跳
                 sendBeat();
             } catch (Exception e) {
                 Loggers.RAFT.warn("[RAFT] error while sending beat {}", e);
@@ -481,6 +530,7 @@ public class RaftCore {
 
         public void sendBeat() throws IOException, InterruptedException {
             RaftPeer local = peers.local();
+            //如果当前不是 leader，则不发送心跳
             if (local.state != RaftPeer.State.LEADER && !STANDALONE_MODE) {
                 return;
             }
@@ -489,6 +539,7 @@ public class RaftCore {
                 Loggers.RAFT.debug("[RAFT] send beat with {} keys.", datums.size());
             }
 
+            //重置选举超时时间，避免一直选举
             local.resetLeaderDue();
 
             // build data
@@ -517,6 +568,7 @@ public class RaftCore {
                 }
             }
 
+            //构建数据包
             packet.put("datums", array);
             // broadcast
             Map<String, String> params = new HashMap<String, String>(1);
@@ -524,6 +576,7 @@ public class RaftCore {
 
             String content = JSON.toJSONString(params);
 
+            //压缩数据包
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             GZIPOutputStream gzip = new GZIPOutputStream(out);
             gzip.write(content.getBytes(StandardCharsets.UTF_8));
@@ -543,6 +596,8 @@ public class RaftCore {
                     if (Loggers.RAFT.isDebugEnabled()) {
                         Loggers.RAFT.debug("send beat to server " + server);
                     }
+
+                    //发送心跳
                     HttpClient.asyncHttpPostLarge(url, null, compressedBytes, new AsyncCompletionHandler<Integer>() {
                         @Override
                         public Integer onCompleted(Response response) throws Exception {
@@ -577,6 +632,7 @@ public class RaftCore {
 
     public RaftPeer receivedBeat(JSONObject beat) throws Exception {
         final RaftPeer local = peers.local();
+        //leader 发送的心跳包
         final RaftPeer remote = new RaftPeer();
         remote.ip = beat.getJSONObject("peer").getString("ip");
         remote.state = RaftPeer.State.valueOf(beat.getJSONObject("peer").getString("state"));
@@ -610,6 +666,7 @@ public class RaftCore {
         local.resetLeaderDue();
         local.resetHeartbeatDue();
 
+        //更新当前节点的 leader
         peers.makeLeader(remote);
 
         if (!switchDomain.isSendBeatOnly()) {
@@ -628,6 +685,8 @@ public class RaftCore {
                 Loggers.RAFT.debug("[RAFT] received beat with {} keys, RaftCore.datums' size is {}, remote server: {}, term: {}, local term: {}",
                     beatDatums.size(), datums.size(), remote.ip, remote.term, local.term);
             }
+
+            //心跳的数据
             for (Object object : beatDatums) {
                 processedCount = processedCount + 1;
 
@@ -653,14 +712,18 @@ public class RaftCore {
                         continue;
                     }
 
+                    //如果当前的服务缓存不包含 leader 发送的服务, 则说明两边数据不一致
                     if (!(datums.containsKey(datumKey) && datums.get(datumKey).timestamp.get() >= timestamp)) {
+                        //将差异化的服务放到 batch 集合中
                         batch.add(datumKey);
                     }
 
+                    // 如果 batch 达到50时，再批量处理
                     if (batch.size() < 50 && processedCount < beatDatums.size()) {
                         continue;
                     }
 
+                    //batch 集合转字符串
                     String keys = StringUtils.join(batch, ",");
 
                     if (batch.size() <= 0) {
@@ -671,6 +734,7 @@ public class RaftCore {
                         , getLeader().ip, batch.size(), processedCount, beatDatums.size(), datums.size());
 
                     // update datum entry
+                    // 批量获取
                     String url = buildURL(remote.ip, API_GET) + "?keys=" + URLEncoder.encode(keys, "UTF-8");
                     HttpClient.asyncHttpGet(url, null, null, new AsyncCompletionHandler<Integer>() {
                         @Override
@@ -704,6 +768,7 @@ public class RaftCore {
                                         newDatum = serviceDatum;
                                     }
 
+                                    // 服务对应的实例
                                     if (KeyBuilder.matchInstanceListKey(datumJson.getString("key"))) {
                                         Datum<Instances> instancesDatum = new Datum<>();
                                         instancesDatum.key = datumJson.getString("key");
@@ -718,13 +783,17 @@ public class RaftCore {
                                         continue;
                                     }
 
+                                    //写入本地文件
                                     raftStore.write(newDatum);
-
+                                    //实例写入缓存
                                     datums.put(newDatum.key, newDatum);
+                                    //触发监听器执行
                                     notifier.addTask(newDatum.key, ApplyAction.CHANGE);
 
+                                    //重置选举时间
                                     local.resetLeaderDue();
 
+                                    // 更新任期
                                     if (local.term.get() + 100 > remote.term.get()) {
                                         getLeader().term.set(remote.term.get());
                                         local.term.set(getLeader().term.get());
